@@ -4,6 +4,7 @@ const THEME_KEY = "fsale_theme";
 const ADMIN_SESSION_KEY = "fsale_admin_session_v1";
 const ACTIVE_SECTION_KEY = "fsale_active_section";
 const OWNED_ACCOUNTS_KEY = "fsale_owned_accounts_v1";
+const REMOTE_DB_URL = "https://mantledb.sh/v2/f-sale-timur-annaklichov-20260430/database";
 
 const defaultDatabase = {
   users: [
@@ -48,10 +49,12 @@ const clearAccounts = document.querySelector("#clearAccounts");
 const dbOutput = document.querySelector("#dbOutput");
 const statsAccounts = document.querySelector("#statsAccounts");
 const statsUsers = document.querySelector("#statsUsers");
+const statsStorage = document.querySelector("#statsStorage");
 
 let currentFilter = "all";
 let database = loadDatabase();
 let currentAdmin = restoreAdminSession();
+let isRemoteDatabaseReady = false;
 
 function showSection(sectionName) {
   if (sectionName === "admin" && !currentAdmin) {
@@ -104,6 +107,15 @@ function loadDatabase() {
   }
 }
 
+function normalizeDatabase(source) {
+  const users = Array.isArray(source?.users) && source.users.length ? source.users : defaultDatabase.users;
+
+  return {
+    users: migrateUsers(users),
+    accounts: Array.isArray(source?.accounts) ? source.accounts : [],
+  };
+}
+
 function migrateUsers(users) {
   const withoutOldAdmin = users.filter((user) => user.login.toLowerCase() !== "admin");
   const otherUsers = withoutOldAdmin
@@ -113,9 +125,60 @@ function migrateUsers(users) {
   return [defaultAdmin, ...otherUsers];
 }
 
-function saveDatabase() {
+function saveLocalDatabase() {
   localStorage.setItem(DB_KEY, JSON.stringify(database));
   updateStats();
+}
+
+async function loadRemoteDatabase() {
+  const response = await fetch(REMOTE_DB_URL, {
+    cache: "no-store",
+    headers: { Accept: "application/json" },
+  });
+
+  if (!response.ok) {
+    throw new Error("Не получилось загрузить общую базу.");
+  }
+
+  return normalizeDatabase(await response.json());
+}
+
+async function saveRemoteDatabase() {
+  const response = await fetch(REMOTE_DB_URL, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(database),
+  });
+
+  if (!response.ok) {
+    throw new Error("Не получилось сохранить общую базу.");
+  }
+}
+
+async function saveDatabase() {
+  if (isRemoteDatabaseReady) {
+    await saveRemoteDatabase();
+  }
+
+  saveLocalDatabase();
+}
+
+async function syncRemoteDatabase() {
+  try {
+    database = await loadRemoteDatabase();
+    isRemoteDatabaseReady = true;
+    saveLocalDatabase();
+    statsStorage.textContent = "online";
+    renderAccounts();
+    renderAdminAccounts();
+  } catch (error) {
+    isRemoteDatabaseReady = false;
+    statsStorage.textContent = "local";
+    console.error(error);
+  }
 }
 
 function readStoredJson(key, fallback) {
@@ -136,6 +199,13 @@ function restoreAdminSession() {
     session = JSON.parse(savedSession);
   } catch {
     session = savedSession;
+  }
+
+  if (typeof session === "object" && session?.role === "admin") {
+    return {
+      ...defaultAdmin,
+      ...session,
+    };
   }
 
   const adminId = typeof session === "string" ? session : session.id;
@@ -163,6 +233,8 @@ function setAdminSession(admin) {
       id: admin.id,
       login: admin.login,
       passwordHash: admin.passwordHash,
+      name: admin.name,
+      role: admin.role,
     }),
   );
   adminName.textContent = admin.name;
@@ -200,10 +272,18 @@ function ownsAccount(accountId) {
   return getOwnedAccountIds().includes(accountId);
 }
 
-function deleteAccount(accountId) {
+async function refreshDatabaseBeforeWrite() {
+  if (!isRemoteDatabaseReady) return;
+
+  database = await loadRemoteDatabase();
+  saveLocalDatabase();
+}
+
+async function deleteAccount(accountId) {
+  await refreshDatabaseBeforeWrite();
   database.accounts = database.accounts.filter((account) => account.id !== accountId);
+  await saveDatabase();
   forgetOwnedAccount(accountId);
-  saveDatabase();
   renderAccounts();
 }
 
@@ -234,7 +314,7 @@ function readImage(file) {
       const image = new Image();
       image.addEventListener("error", () => reject(new Error("Не получилось обработать картинку.")));
       image.addEventListener("load", () => {
-        const maxSide = 1200;
+        const maxSide = 260;
         const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
         const canvas = document.createElement("canvas");
         canvas.width = Math.round(image.width * scale);
@@ -242,7 +322,7 @@ function readImage(file) {
 
         const context = canvas.getContext("2d");
         context.drawImage(image, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL("image/jpeg", 0.82));
+        resolve(canvas.toDataURL("image/jpeg", 0.42));
       });
       image.src = reader.result;
     });
@@ -441,11 +521,15 @@ navButtons.forEach((button) => {
   });
 });
 
-accountList.addEventListener("click", (event) => {
+accountList.addEventListener("click", async (event) => {
   const ownerDeleteButton = event.target.closest("[data-owner-delete]");
   if (ownerDeleteButton) {
     if (confirm("Удалить твой лот из каталога?")) {
-      deleteAccount(ownerDeleteButton.dataset.ownerDelete);
+      try {
+        await deleteAccount(ownerDeleteButton.dataset.ownerDelete);
+      } catch (error) {
+        alert(error.message);
+      }
     }
     return;
   }
@@ -456,11 +540,15 @@ accountList.addEventListener("click", (event) => {
   }
 });
 
-adminAccounts.addEventListener("click", (event) => {
+adminAccounts.addEventListener("click", async (event) => {
   const deleteButton = event.target.closest("[data-delete]");
   if (!deleteButton) return;
 
-  deleteAccount(deleteButton.dataset.delete);
+  try {
+    await deleteAccount(deleteButton.dataset.delete);
+  } catch (error) {
+    alert(error.message);
+  }
 });
 
 searchInput.addEventListener("input", renderAccounts);
@@ -500,6 +588,13 @@ sellForm.addEventListener("submit", async (event) => {
     return;
   }
 
+  try {
+    await refreshDatabaseBeforeWrite();
+  } catch (error) {
+    alert(error.message);
+    return;
+  }
+
   const accountId = createId();
 
   database.accounts = [
@@ -520,8 +615,13 @@ sellForm.addEventListener("submit", async (event) => {
     ...database.accounts,
   ];
 
+  try {
+    await saveDatabase();
+  } catch (error) {
+    alert(error.message);
+    return;
+  }
   rememberOwnedAccount(accountId);
-  saveDatabase();
   sellForm.reset();
   imagePreview.classList.add("hidden");
   imagePreview.style.backgroundImage = "";
@@ -567,10 +667,22 @@ exportDb.addEventListener("click", () => {
   dbOutput.classList.toggle("hidden");
 });
 
-clearAccounts.addEventListener("click", () => {
+clearAccounts.addEventListener("click", async () => {
+  try {
+    await refreshDatabaseBeforeWrite();
+  } catch (error) {
+    alert(error.message);
+    return;
+  }
+
   database.accounts = [];
   saveOwnedAccountIds([]);
-  saveDatabase();
+  try {
+    await saveDatabase();
+  } catch (error) {
+    alert(error.message);
+    return;
+  }
   renderAccounts();
 });
 
@@ -608,4 +720,5 @@ const savedSection = localStorage.getItem(ACTIVE_SECTION_KEY);
 if (savedSection && (savedSection !== "admin" || currentAdmin)) {
   showSection(savedSection);
 }
+syncRemoteDatabase();
 window.addEventListener("load", refreshIcons);
