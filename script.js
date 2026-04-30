@@ -55,6 +55,7 @@ let currentFilter = "all";
 let database = loadDatabase();
 let currentAdmin = restoreAdminSession();
 let isRemoteDatabaseReady = false;
+let remoteDatabasePromise = null;
 
 function showSection(sectionName) {
   if (sectionName === "admin" && !currentAdmin) {
@@ -116,6 +117,19 @@ function normalizeDatabase(source) {
   };
 }
 
+function mergeAccounts(...accountGroups) {
+  const accountsById = new Map();
+
+  accountGroups.flat().forEach((account) => {
+    if (!account?.id) return;
+    accountsById.set(account.id, account);
+  });
+
+  return [...accountsById.values()].sort((first, second) => {
+    return new Date(second.createdAt || 0) - new Date(first.createdAt || 0);
+  });
+}
+
 function migrateUsers(users) {
   const withoutOldAdmin = users.filter((user) => user.login.toLowerCase() !== "admin");
   const otherUsers = withoutOldAdmin
@@ -161,6 +175,8 @@ async function saveRemoteDatabase() {
 async function saveDatabase() {
   if (isRemoteDatabaseReady) {
     await saveRemoteDatabase();
+  } else {
+    throw new Error("Общая база еще не загрузилась. Обнови страницу и попробуй снова.");
   }
 
   saveLocalDatabase();
@@ -168,16 +184,43 @@ async function saveDatabase() {
 
 async function syncRemoteDatabase() {
   try {
-    database = await loadRemoteDatabase();
+    const localDatabase = normalizeDatabase(database);
+    const remoteDatabase = await loadRemoteDatabase();
+    const mergedAccounts = mergeAccounts(remoteDatabase.accounts, localDatabase.accounts);
+
+    database = {
+      users: remoteDatabase.users,
+      accounts: mergedAccounts,
+    };
     isRemoteDatabaseReady = true;
+
+    if (mergedAccounts.length !== remoteDatabase.accounts.length) {
+      await saveRemoteDatabase();
+    }
+
     saveLocalDatabase();
     statsStorage.textContent = "online";
     renderAccounts();
     renderAdminAccounts();
   } catch (error) {
     isRemoteDatabaseReady = false;
+    remoteDatabasePromise = null;
     statsStorage.textContent = "local";
     console.error(error);
+  }
+}
+
+async function ensureRemoteDatabaseReady() {
+  if (isRemoteDatabaseReady) return;
+
+  if (!remoteDatabasePromise) {
+    remoteDatabasePromise = syncRemoteDatabase();
+  }
+
+  await remoteDatabasePromise;
+
+  if (!isRemoteDatabaseReady) {
+    throw new Error("Общая база не загрузилась. Проверь интернет и попробуй снова.");
   }
 }
 
@@ -273,7 +316,7 @@ function ownsAccount(accountId) {
 }
 
 async function refreshDatabaseBeforeWrite() {
-  if (!isRemoteDatabaseReady) return;
+  await ensureRemoteDatabaseReady();
 
   database = await loadRemoteDatabase();
   saveLocalDatabase();
@@ -314,7 +357,7 @@ function readImage(file) {
       const image = new Image();
       image.addEventListener("error", () => reject(new Error("Не получилось обработать картинку.")));
       image.addEventListener("load", () => {
-        const maxSide = 260;
+        const maxSide = 170;
         const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
         const canvas = document.createElement("canvas");
         canvas.width = Math.round(image.width * scale);
@@ -322,7 +365,7 @@ function readImage(file) {
 
         const context = canvas.getContext("2d");
         context.drawImage(image, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL("image/jpeg", 0.42));
+        resolve(canvas.toDataURL("image/jpeg", 0.34));
       });
       image.src = reader.result;
     });
@@ -720,5 +763,5 @@ const savedSection = localStorage.getItem(ACTIVE_SECTION_KEY);
 if (savedSection && (savedSection !== "admin" || currentAdmin)) {
   showSection(savedSection);
 }
-syncRemoteDatabase();
+remoteDatabasePromise = syncRemoteDatabase();
 window.addEventListener("load", refreshIcons);
