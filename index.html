@@ -29,9 +29,14 @@
       </nav>
 
       <div class="header-actions">
+        <span class="account-pill hidden" id="accountName"></span>
         <button class="button secondary small" id="openLogin" type="button">
           <i data-lucide="log-in"></i>
           Вход
+        </button>
+        <button class="button secondary small hidden" id="logoutUser" type="button">
+          <i data-lucide="log-out"></i>
+          Выйти
         </button>
         <button class="icon-button" id="themeToggle" type="button" aria-label="Переключить тему">
           <i data-lucide="moon"></i>
@@ -94,6 +99,10 @@
           <button class="filter" type="button" data-filter="legendary">Легендарные</button>
           <button class="filter" type="button" data-filter="high-trophy">50k+</button>
           <button class="filter" type="button" data-filter="budget">До 5 000 ₽</button>
+          <button class="filter" id="refreshMarket" type="button">
+            <i data-lucide="refresh-cw"></i>
+            Обновить
+          </button>
         </div>
 
         <div class="cards" id="accountList"></div>
@@ -191,35 +200,71 @@
       <button class="icon-button close" id="closeLogin" type="button" aria-label="Закрыть">
         <i data-lucide="x"></i>
       </button>
-      <form class="admin-login" id="adminLogin" autocomplete="off">
-        <p class="eyebrow">Admin login</p>
-        <h3>Вход в админку</h3>
-            <label>
-              Логин
-              <input
-                name="admin_login"
-                type="text"
-                autocomplete="off"
-                autocapitalize="none"
-                spellcheck="false"
-                data-lpignore="true"
-                required
-              />
-            </label>
-            <label>
-              Пароль
-              <input
-                name="admin_key"
-                type="password"
-                autocomplete="new-password"
-                data-lpignore="true"
-                required
-              />
-            </label>
-        <p class="login-error hidden" id="loginError">Нет доступа. Нужна роль admin в базе.</p>
+      <div class="auth-tabs" role="tablist" aria-label="Аккаунт">
+        <button class="filter active" type="button" data-auth-mode="login">Вход</button>
+        <button class="filter" type="button" data-auth-mode="register">Регистрация</button>
+      </div>
+      <form class="admin-login auth-form" id="userLogin" autocomplete="off">
+        <p class="eyebrow">Account</p>
+        <h3>Вход в аккаунт</h3>
+        <label>
+          Логин
+          <input
+            name="user_login"
+            type="text"
+            autocomplete="username"
+            autocapitalize="none"
+            spellcheck="false"
+            data-lpignore="true"
+            required
+          />
+        </label>
+        <label>
+          Пароль
+          <input
+            name="user_key"
+            type="password"
+            autocomplete="current-password"
+            data-lpignore="true"
+            required
+          />
+        </label>
+        <p class="login-error hidden" id="loginError">Неверный логин или пароль.</p>
         <button class="button primary wide" type="submit">
           <i data-lucide="log-in"></i>
           Войти
+        </button>
+      </form>
+      <form class="admin-login auth-form hidden" id="userRegister" autocomplete="off">
+        <p class="eyebrow">Account</p>
+        <h3>Регистрация</h3>
+        <label>
+          Имя
+          <input name="register_name" type="text" autocomplete="name" required />
+        </label>
+        <label>
+          Логин
+          <input
+            name="register_login"
+            type="text"
+            autocomplete="username"
+            autocapitalize="none"
+            spellcheck="false"
+            required
+          />
+        </label>
+        <label>
+          Telegram
+          <input name="register_contact" type="text" placeholder="@seller" autocomplete="off" required />
+        </label>
+        <label>
+          Пароль
+          <input name="register_key" type="password" autocomplete="new-password" minlength="4" required />
+        </label>
+        <p class="login-error hidden" id="registerError">Такой логин уже занят.</p>
+        <button class="button primary wide" type="submit">
+          <i data-lucide="user-plus"></i>
+          Зарегистрироваться
         </button>
       </form>
     </dialog>

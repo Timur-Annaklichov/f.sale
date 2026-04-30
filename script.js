@@ -2,8 +2,10 @@ const DB_KEY = "fsale_database_v1";
 const OLD_ACCOUNTS_KEY = "fsale_accounts";
 const THEME_KEY = "fsale_theme";
 const ADMIN_SESSION_KEY = "fsale_admin_session_v1";
+const USER_SESSION_KEY = "fsale_user_session_v1";
 const ACTIVE_SECTION_KEY = "fsale_active_section";
 const OWNED_ACCOUNTS_KEY = "fsale_owned_accounts_v1";
+const LOCAL_ACCOUNTS_MIGRATED_KEY = "fsale_local_accounts_migrated_v1";
 const REMOTE_DB_URL = "https://mantledb.sh/v2/f-sale-timur-annaklichov-20260430/database";
 
 const defaultDatabase = {
@@ -39,11 +41,17 @@ const openLogin = document.querySelector("#openLogin");
 const loginModal = document.querySelector("#loginModal");
 const closeLogin = document.querySelector("#closeLogin");
 const loginError = document.querySelector("#loginError");
-const adminLogin = document.querySelector("#adminLogin");
+const registerError = document.querySelector("#registerError");
+const userLogin = document.querySelector("#userLogin");
+const userRegister = document.querySelector("#userRegister");
+const authTabs = document.querySelectorAll("[data-auth-mode]");
 const adminDashboard = document.querySelector("#adminDashboard");
 const adminAccounts = document.querySelector("#adminAccounts");
 const adminName = document.querySelector("#adminName");
 const logoutAdmin = document.querySelector("#logoutAdmin");
+const logoutUser = document.querySelector("#logoutUser");
+const accountName = document.querySelector("#accountName");
+const refreshMarket = document.querySelector("#refreshMarket");
 const exportDb = document.querySelector("#exportDb");
 const clearAccounts = document.querySelector("#clearAccounts");
 const dbOutput = document.querySelector("#dbOutput");
@@ -53,13 +61,24 @@ const statsStorage = document.querySelector("#statsStorage");
 
 let currentFilter = "all";
 let database = loadDatabase();
+let currentUser = restoreUserSession();
 let currentAdmin = restoreAdminSession();
+if (!currentAdmin && currentUser?.role === "admin") currentAdmin = currentUser;
+if (!currentUser && currentAdmin) currentUser = currentAdmin;
 let isRemoteDatabaseReady = false;
 let remoteDatabasePromise = null;
+let pendingSectionAfterLogin = null;
 
 function showSection(sectionName) {
   if (sectionName === "admin" && !currentAdmin) {
-    openLoginModal();
+    pendingSectionAfterLogin = "admin";
+    openLoginModal("login");
+    return;
+  }
+
+  if (sectionName === "sell" && !currentUser) {
+    pendingSectionAfterLogin = "sell";
+    openLoginModal("register");
     return;
   }
 
@@ -72,6 +91,7 @@ function showSection(sectionName) {
   });
 
   localStorage.setItem(ACTIVE_SECTION_KEY, sectionName);
+  fillSellContact();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -130,6 +150,23 @@ function mergeAccounts(...accountGroups) {
   });
 }
 
+function prepareLocalAccountsForMigration(accounts) {
+  const ownedIds = getOwnedAccountIds();
+
+  return accounts.map((account) => {
+    if (!currentUser || account.ownerId || !ownedIds.includes(account.id)) {
+      return account;
+    }
+
+    return {
+      ...account,
+      ownerId: currentUser.id,
+      ownerLogin: currentUser.login,
+      ownerName: currentUser.name,
+    };
+  });
+}
+
 function migrateUsers(users) {
   const withoutOldAdmin = users.filter((user) => user.login.toLowerCase() !== "admin");
   const otherUsers = withoutOldAdmin
@@ -158,18 +195,24 @@ async function loadRemoteDatabase() {
 }
 
 async function saveRemoteDatabase() {
+  const remoteDatabase = normalizeDatabase({
+    ...database,
+    accounts: await prepareAccountsForRemote(database.accounts),
+  });
   const response = await fetch(REMOTE_DB_URL, {
     method: "POST",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(database),
+    body: JSON.stringify(remoteDatabase),
   });
 
   if (!response.ok) {
     throw new Error("Не получилось сохранить общую базу.");
   }
+
+  database = remoteDatabase;
 }
 
 async function saveDatabase() {
@@ -186,7 +229,16 @@ async function syncRemoteDatabase() {
   try {
     const localDatabase = normalizeDatabase(database);
     const remoteDatabase = await loadRemoteDatabase();
-    const mergedAccounts = mergeAccounts(remoteDatabase.accounts, localDatabase.accounts);
+    const localAccounts = prepareLocalAccountsForMigration(localDatabase.accounts);
+    const remoteAccountIds = new Set(remoteDatabase.accounts.map((account) => account.id));
+    const hasLocalOnlyAccounts = localAccounts.some((account) => !remoteAccountIds.has(account.id));
+    const hasUnmigratedLocalAccounts =
+      !localStorage.getItem(LOCAL_ACCOUNTS_MIGRATED_KEY) && hasLocalOnlyAccounts;
+    const canMigrateLocalAccounts = hasUnmigratedLocalAccounts && Boolean(currentUser);
+    const shouldKeepLocalAccounts = hasUnmigratedLocalAccounts && !currentUser;
+    const mergedAccounts = canMigrateLocalAccounts || shouldKeepLocalAccounts
+      ? mergeAccounts(remoteDatabase.accounts, localAccounts)
+      : remoteDatabase.accounts;
 
     database = {
       users: remoteDatabase.users,
@@ -194,10 +246,13 @@ async function syncRemoteDatabase() {
     };
     isRemoteDatabaseReady = true;
 
-    if (mergedAccounts.length !== remoteDatabase.accounts.length) {
+    if (canMigrateLocalAccounts && mergedAccounts.length !== remoteDatabase.accounts.length) {
       await saveRemoteDatabase();
     }
 
+    if (!hasUnmigratedLocalAccounts || canMigrateLocalAccounts) {
+      localStorage.setItem(LOCAL_ACCOUNTS_MIGRATED_KEY, "1");
+    }
     saveLocalDatabase();
     statsStorage.textContent = "online";
     renderAccounts();
@@ -231,6 +286,57 @@ function readStoredJson(key, fallback) {
   } catch {
     return fallback;
   }
+}
+
+function createSessionUser(user) {
+  return {
+    id: user.id,
+    login: user.login,
+    passwordHash: user.passwordHash,
+    name: user.name || user.login,
+    role: user.role || "user",
+    contact: user.contact || "",
+  };
+}
+
+function restoreUserSession() {
+  const session = readStoredJson(USER_SESSION_KEY, null);
+  if (!session?.id || !session.login) return null;
+
+  return createSessionUser(session);
+}
+
+function setUserSession(user) {
+  currentUser = createSessionUser(user);
+  localStorage.setItem(USER_SESSION_KEY, JSON.stringify(currentUser));
+  syncAccountUi();
+  fillSellContact();
+}
+
+function clearUserSession() {
+  currentUser = null;
+  localStorage.removeItem(USER_SESSION_KEY);
+  syncAccountUi();
+}
+
+function syncAccountUi() {
+  if (currentUser) {
+    accountName.textContent = currentUser.name || currentUser.login;
+    accountName.classList.remove("hidden");
+    logoutUser.classList.remove("hidden");
+    openLogin.classList.add("hidden");
+    return;
+  }
+
+  accountName.textContent = "";
+  accountName.classList.add("hidden");
+  logoutUser.classList.add("hidden");
+  openLogin.classList.remove("hidden");
+}
+
+function fillSellContact() {
+  if (!currentUser?.contact || !sellForm?.elements.contact || sellForm.elements.contact.value) return;
+  sellForm.elements.contact.value = currentUser.contact;
 }
 
 function restoreAdminSession() {
@@ -278,11 +384,11 @@ function setAdminSession(admin) {
       passwordHash: admin.passwordHash,
       name: admin.name,
       role: admin.role,
+      contact: admin.contact || "",
     }),
   );
   adminName.textContent = admin.name;
   adminNavButton.classList.remove("hidden");
-  openLogin.classList.add("hidden");
   renderAdminAccounts();
 }
 
@@ -290,8 +396,8 @@ function clearAdminSession() {
   currentAdmin = null;
   localStorage.removeItem(ADMIN_SESSION_KEY);
   adminNavButton.classList.add("hidden");
-  openLogin.classList.remove("hidden");
   dbOutput.classList.add("hidden");
+  syncAccountUi();
 }
 
 function getOwnedAccountIds() {
@@ -311,8 +417,9 @@ function forgetOwnedAccount(accountId) {
   saveOwnedAccountIds(getOwnedAccountIds().filter((id) => id !== accountId));
 }
 
-function ownsAccount(accountId) {
-  return getOwnedAccountIds().includes(accountId);
+function ownsAccount(account) {
+  if (currentUser && account.ownerId === currentUser.id) return true;
+  return getOwnedAccountIds().includes(account.id);
 }
 
 async function refreshDatabaseBeforeWrite() {
@@ -337,6 +444,10 @@ function formatNumber(value) {
 function normalizeContact(contact) {
   const cleanContact = contact.trim();
   return cleanContact.startsWith("@") ? cleanContact : `@${cleanContact}`;
+}
+
+function normalizeLogin(login) {
+  return login.trim().toLowerCase();
 }
 
 function readImage(file) {
@@ -371,6 +482,35 @@ function readImage(file) {
     });
     reader.readAsDataURL(file);
   });
+}
+
+function resizeImageDataUrl(dataUrl, maxSide = 140, quality = 0.3) {
+  if (!dataUrl || !dataUrl.startsWith("data:image/")) return Promise.resolve(dataUrl || "");
+
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.addEventListener("error", () => resolve(""));
+    image.addEventListener("load", () => {
+      const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(image.width * scale));
+      canvas.height = Math.max(1, Math.round(image.height * scale));
+
+      const context = canvas.getContext("2d");
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    });
+    image.src = dataUrl;
+  });
+}
+
+async function prepareAccountsForRemote(accounts) {
+  return Promise.all(
+    accounts.map(async (account) => ({
+      ...account,
+      image: await resizeImageDataUrl(account.image),
+    })),
+  );
 }
 
 async function hashText(value) {
@@ -445,7 +585,7 @@ function renderAccounts() {
             </div>
             <div class="card-actions">
               ${
-                ownsAccount(account.id)
+                ownsAccount(account)
                   ? `<button class="button danger" type="button" data-owner-delete="${account.id}">
                       <i data-lucide="trash-2"></i>
                       Удалить
@@ -534,18 +674,31 @@ function refreshIcons() {
 }
 
 function clearLoginForm() {
-  adminLogin.reset();
-  adminLogin.elements.admin_login.value = "";
-  adminLogin.elements.admin_key.value = "";
-  adminLogin.classList.remove("error");
+  userLogin.reset();
+  userRegister.reset();
+  userLogin.classList.remove("error");
+  userRegister.classList.remove("error");
+  loginError.textContent = "Неверный логин или пароль.";
+  registerError.textContent = "Такой логин уже занят.";
   loginError.classList.add("hidden");
+  registerError.classList.add("hidden");
 }
 
-function openLoginModal() {
+function setAuthMode(mode) {
+  const isRegister = mode === "register";
+  userLogin.classList.toggle("hidden", isRegister);
+  userRegister.classList.toggle("hidden", !isRegister);
+  authTabs.forEach((button) => {
+    button.classList.toggle("active", button.dataset.authMode === mode);
+  });
+  loginError.classList.add("hidden");
+  registerError.classList.add("hidden");
+}
+
+function openLoginModal(mode = "login") {
   clearLoginForm();
+  setAuthMode(mode);
   loginModal.showModal();
-  setTimeout(clearLoginForm, 80);
-  setTimeout(clearLoginForm, 250);
   refreshIcons();
 }
 
@@ -555,6 +708,12 @@ filters.forEach((button) => {
     button.classList.add("active");
     currentFilter = button.dataset.filter;
     renderAccounts();
+  });
+});
+
+authTabs.forEach((button) => {
+  button.addEventListener("click", () => {
+    setAuthMode(button.dataset.authMode);
   });
 });
 
@@ -596,6 +755,19 @@ adminAccounts.addEventListener("click", async (event) => {
 
 searchInput.addEventListener("input", renderAccounts);
 
+refreshMarket.addEventListener("click", async () => {
+  refreshMarket.disabled = true;
+  try {
+    remoteDatabasePromise = syncRemoteDatabase();
+    await remoteDatabasePromise;
+  } catch (error) {
+    alert(error.message);
+  } finally {
+    refreshMarket.disabled = false;
+    refreshIcons();
+  }
+});
+
 accountImage.addEventListener("change", async () => {
   imagePreview.classList.add("hidden");
   imagePreview.style.backgroundImage = "";
@@ -613,6 +785,12 @@ accountImage.addEventListener("change", async () => {
 
 sellForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (!currentUser) {
+    pendingSectionAfterLogin = "sell";
+    openLoginModal("register");
+    return;
+  }
+
   const data = new FormData(sellForm);
   const trophies = Number(data.get("trophies"));
   const price = Number(data.get("price"));
@@ -651,6 +829,9 @@ sellForm.addEventListener("submit", async (event) => {
       price,
       rank: trophies >= 50000 ? "R35" : trophies >= 30000 ? "R30" : "R25",
       seller: normalizeContact(data.get("contact")),
+      ownerId: currentUser.id,
+      ownerLogin: currentUser.login,
+      ownerName: currentUser.name,
       tag: price <= 5000 ? "budget" : trophies >= 50000 ? "high-trophy" : "legendary",
       image,
       createdAt: new Date().toISOString(),
@@ -674,34 +855,128 @@ sellForm.addEventListener("submit", async (event) => {
   showSection("market");
 });
 
-adminLogin.addEventListener("submit", async (event) => {
+userLogin.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const data = new FormData(adminLogin);
-  const passwordHash = await hashText(data.get("admin_key"));
-  const admin = database.users.find(
-    (user) =>
-      user.role === "admin" &&
-      user.login === data.get("admin_login").trim() &&
-      user.passwordHash === passwordHash,
-  );
+  const data = new FormData(userLogin);
+  const login = normalizeLogin(data.get("user_login"));
+  const passwordHash = await hashText(data.get("user_key"));
 
-  if (!admin) {
-    adminLogin.classList.add("error");
+  try {
+    await ensureRemoteDatabaseReady();
+  } catch (error) {
+    loginError.textContent = error.message;
     loginError.classList.remove("hidden");
     return;
   }
 
-  setAdminSession(admin);
+  const user = database.users.find(
+    (user) =>
+      normalizeLogin(user.login) === login &&
+      user.passwordHash === passwordHash,
+  );
+
+  if (!user) {
+    userLogin.classList.add("error");
+    loginError.textContent = "Неверный логин или пароль.";
+    loginError.classList.remove("hidden");
+    return;
+  }
+
+  setUserSession(user);
+  if (user.role === "admin") {
+    setAdminSession(user);
+  }
+  remoteDatabasePromise = syncRemoteDatabase();
+  await remoteDatabasePromise;
+
   loginModal.close();
   clearLoginForm();
-  adminLogin.classList.remove("error");
-  loginError.classList.add("hidden");
-  showSection("admin");
+  showSection(pendingSectionAfterLogin || (user.role === "admin" ? "admin" : "market"));
+  pendingSectionAfterLogin = null;
+  refreshIcons();
+});
+
+userRegister.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const data = new FormData(userRegister);
+  const login = normalizeLogin(data.get("register_login"));
+  const password = data.get("register_key");
+
+  if (login.length < 3) {
+    userRegister.classList.add("error");
+    registerError.textContent = "Логин должен быть от 3 символов.";
+    registerError.classList.remove("hidden");
+    return;
+  }
+
+  try {
+    await ensureRemoteDatabaseReady();
+  } catch (error) {
+    registerError.textContent = error.message;
+    registerError.classList.remove("hidden");
+    return;
+  }
+
+  const isLoginTaken = database.users.some((user) => normalizeLogin(user.login) === login);
+  if (isLoginTaken) {
+    userRegister.classList.add("error");
+    registerError.textContent = "Такой логин уже занят.";
+    registerError.classList.remove("hidden");
+    return;
+  }
+
+  const user = {
+    id: createId(),
+    login,
+    passwordHash: await hashText(password),
+    name: data.get("register_name").trim(),
+    role: "user",
+    contact: normalizeContact(data.get("register_contact")),
+    createdAt: new Date().toISOString(),
+  };
+
+  database.users = [...database.users, user];
+  database.accounts = prepareLocalAccountsForMigration(database.accounts).map((account) => {
+    if (account.ownerId || !getOwnedAccountIds().includes(account.id)) {
+      return account;
+    }
+
+    return {
+      ...account,
+      ownerId: user.id,
+      ownerLogin: user.login,
+      ownerName: user.name,
+    };
+  });
+
+  try {
+    await saveDatabase();
+  } catch (error) {
+    registerError.textContent = error.message;
+    registerError.classList.remove("hidden");
+    return;
+  }
+
+  setUserSession(user);
+  localStorage.setItem(LOCAL_ACCOUNTS_MIGRATED_KEY, "1");
+  loginModal.close();
+  clearLoginForm();
+  showSection(pendingSectionAfterLogin || "sell");
+  pendingSectionAfterLogin = null;
   refreshIcons();
 });
 
 logoutAdmin.addEventListener("click", () => {
+  clearUserSession();
   clearAdminSession();
+  showSection("home");
+});
+
+logoutUser.addEventListener("click", () => {
+  if (currentUser?.role === "admin") {
+    clearAdminSession();
+  }
+  clearUserSession();
   showSection("home");
 });
 
@@ -755,6 +1030,7 @@ if (localStorage.getItem(THEME_KEY) === "dark") {
 }
 
 updateStats();
+syncAccountUi();
 renderAccounts();
 if (currentAdmin) {
   setAdminSession(currentAdmin);
@@ -764,4 +1040,9 @@ if (savedSection && (savedSection !== "admin" || currentAdmin)) {
   showSection(savedSection);
 }
 remoteDatabasePromise = syncRemoteDatabase();
+setInterval(() => {
+  if (!document.hidden) {
+    remoteDatabasePromise = syncRemoteDatabase();
+  }
+}, 20000);
 window.addEventListener("load", refreshIcons);

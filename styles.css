@@ -127,6 +127,20 @@ input {
   gap: 8px;
 }
 
+.account-pill {
+  max-width: 160px;
+  overflow: hidden;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .icon-button {
   display: inline-grid;
   place-items: center;
@@ -400,6 +414,10 @@ h3 {
 }
 
 .filter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   min-height: 40px;
   padding: 0 14px;
   border: 1px solid var(--line);
@@ -566,6 +584,13 @@ h3 {
 
 .login-modal .admin-login {
   grid-template-columns: 1fr;
+}
+
+.auth-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding-right: 44px;
 }
 
 .login-modal h3 {
