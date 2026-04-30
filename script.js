@@ -1,6 +1,8 @@
 const DB_KEY = "fsale_database_v1";
 const OLD_ACCOUNTS_KEY = "fsale_accounts";
 const THEME_KEY = "fsale_theme";
+const ADMIN_SESSION_KEY = "fsale_admin_session_v1";
+const ACTIVE_SECTION_KEY = "fsale_active_section";
 
 const defaultDatabase = {
   users: [
@@ -47,8 +49,8 @@ const statsAccounts = document.querySelector("#statsAccounts");
 const statsUsers = document.querySelector("#statsUsers");
 
 let currentFilter = "all";
-let currentAdmin = null;
 let database = loadDatabase();
+let currentAdmin = restoreAdminSession();
 
 function showSection(sectionName) {
   if (sectionName === "admin" && !currentAdmin) {
@@ -64,6 +66,7 @@ function showSection(sectionName) {
     button.classList.toggle("active", button.dataset.section === sectionName);
   });
 
+  localStorage.setItem(ACTIVE_SECTION_KEY, sectionName);
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -112,6 +115,36 @@ function migrateUsers(users) {
 function saveDatabase() {
   localStorage.setItem(DB_KEY, JSON.stringify(database));
   updateStats();
+}
+
+function restoreAdminSession() {
+  const adminId = localStorage.getItem(ADMIN_SESSION_KEY);
+  if (!adminId) return null;
+
+  const admin = database.users.find((user) => user.id === adminId && user.role === "admin");
+  if (!admin) {
+    localStorage.removeItem(ADMIN_SESSION_KEY);
+    return null;
+  }
+
+  return admin;
+}
+
+function setAdminSession(admin) {
+  currentAdmin = admin;
+  localStorage.setItem(ADMIN_SESSION_KEY, admin.id);
+  adminName.textContent = admin.name;
+  adminNavButton.classList.remove("hidden");
+  openLogin.classList.add("hidden");
+  renderAdminAccounts();
+}
+
+function clearAdminSession() {
+  currentAdmin = null;
+  localStorage.removeItem(ADMIN_SESSION_KEY);
+  adminNavButton.classList.add("hidden");
+  openLogin.classList.remove("hidden");
+  dbOutput.classList.add("hidden");
 }
 
 function formatNumber(value) {
@@ -436,24 +469,17 @@ adminLogin.addEventListener("submit", async (event) => {
     return;
   }
 
-  currentAdmin = admin;
-  adminName.textContent = admin.name;
-  adminNavButton.classList.remove("hidden");
-  openLogin.classList.add("hidden");
+  setAdminSession(admin);
   loginModal.close();
   clearLoginForm();
   adminLogin.classList.remove("error");
   loginError.classList.add("hidden");
-  renderAdminAccounts();
   showSection("admin");
   refreshIcons();
 });
 
 logoutAdmin.addEventListener("click", () => {
-  currentAdmin = null;
-  adminNavButton.classList.add("hidden");
-  openLogin.classList.remove("hidden");
-  dbOutput.classList.add("hidden");
+  clearAdminSession();
   showSection("home");
 });
 
@@ -495,4 +521,11 @@ if (localStorage.getItem(THEME_KEY) === "dark") {
 
 updateStats();
 renderAccounts();
+if (currentAdmin) {
+  setAdminSession(currentAdmin);
+}
+const savedSection = localStorage.getItem(ACTIVE_SECTION_KEY);
+if (savedSection && (savedSection !== "admin" || currentAdmin)) {
+  showSection(savedSection);
+}
 window.addEventListener("load", refreshIcons);
