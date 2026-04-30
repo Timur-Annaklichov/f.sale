@@ -526,6 +526,18 @@ h3 {
   gap: 12px;
 }
 
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.card-actions .button {
+  min-height: 44px;
+  padding: 0 12px;
+}
+
 .price {
   font-size: 26px;
   font-weight: 900;

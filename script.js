@@ -3,6 +3,7 @@ const OLD_ACCOUNTS_KEY = "fsale_accounts";
 const THEME_KEY = "fsale_theme";
 const ADMIN_SESSION_KEY = "fsale_admin_session_v1";
 const ACTIVE_SECTION_KEY = "fsale_active_section";
+const OWNED_ACCOUNTS_KEY = "fsale_owned_accounts_v1";
 
 const defaultDatabase = {
   users: [
@@ -117,11 +118,35 @@ function saveDatabase() {
   updateStats();
 }
 
-function restoreAdminSession() {
-  const adminId = localStorage.getItem(ADMIN_SESSION_KEY);
-  if (!adminId) return null;
+function readStoredJson(key, fallback) {
+  try {
+    const saved = localStorage.getItem(key);
+    return saved ? JSON.parse(saved) : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
-  const admin = database.users.find((user) => user.id === adminId && user.role === "admin");
+function restoreAdminSession() {
+  const savedSession = localStorage.getItem(ADMIN_SESSION_KEY);
+  if (!savedSession) return null;
+
+  let session = savedSession;
+  try {
+    session = JSON.parse(savedSession);
+  } catch {
+    session = savedSession;
+  }
+
+  const adminId = typeof session === "string" ? session : session.id;
+  const adminLogin = typeof session === "string" ? "" : session.login;
+  const adminPasswordHash = typeof session === "string" ? "" : session.passwordHash;
+
+  const admin = database.users.find(
+    (user) =>
+      user.role === "admin" &&
+      (user.id === adminId || (user.login === adminLogin && user.passwordHash === adminPasswordHash)),
+  );
   if (!admin) {
     localStorage.removeItem(ADMIN_SESSION_KEY);
     return null;
@@ -132,7 +157,14 @@ function restoreAdminSession() {
 
 function setAdminSession(admin) {
   currentAdmin = admin;
-  localStorage.setItem(ADMIN_SESSION_KEY, admin.id);
+  localStorage.setItem(
+    ADMIN_SESSION_KEY,
+    JSON.stringify({
+      id: admin.id,
+      login: admin.login,
+      passwordHash: admin.passwordHash,
+    }),
+  );
   adminName.textContent = admin.name;
   adminNavButton.classList.remove("hidden");
   openLogin.classList.add("hidden");
@@ -145,6 +177,34 @@ function clearAdminSession() {
   adminNavButton.classList.add("hidden");
   openLogin.classList.remove("hidden");
   dbOutput.classList.add("hidden");
+}
+
+function getOwnedAccountIds() {
+  const ids = readStoredJson(OWNED_ACCOUNTS_KEY, []);
+  return Array.isArray(ids) ? ids : [];
+}
+
+function saveOwnedAccountIds(ids) {
+  localStorage.setItem(OWNED_ACCOUNTS_KEY, JSON.stringify([...new Set(ids)]));
+}
+
+function rememberOwnedAccount(accountId) {
+  saveOwnedAccountIds([accountId, ...getOwnedAccountIds()]);
+}
+
+function forgetOwnedAccount(accountId) {
+  saveOwnedAccountIds(getOwnedAccountIds().filter((id) => id !== accountId));
+}
+
+function ownsAccount(accountId) {
+  return getOwnedAccountIds().includes(accountId);
+}
+
+function deleteAccount(accountId) {
+  database.accounts = database.accounts.filter((account) => account.id !== accountId);
+  forgetOwnedAccount(accountId);
+  saveDatabase();
+  renderAccounts();
 }
 
 function formatNumber(value) {
@@ -260,10 +320,20 @@ function renderAccounts() {
               <span class="seller">${account.seller}</span>
               <div class="price">${formatNumber(account.price)} ₽</div>
             </div>
-            <button class="button primary" type="button" data-buy="${account.id}">
-              <i data-lucide="credit-card"></i>
-              Купить
-            </button>
+            <div class="card-actions">
+              ${
+                ownsAccount(account.id)
+                  ? `<button class="button danger" type="button" data-owner-delete="${account.id}">
+                      <i data-lucide="trash-2"></i>
+                      Удалить
+                    </button>`
+                  : ""
+              }
+              <button class="button primary" type="button" data-buy="${account.id}">
+                <i data-lucide="credit-card"></i>
+                Купить
+              </button>
+            </div>
           </div>
         </article>
       `,
@@ -372,6 +442,14 @@ navButtons.forEach((button) => {
 });
 
 accountList.addEventListener("click", (event) => {
+  const ownerDeleteButton = event.target.closest("[data-owner-delete]");
+  if (ownerDeleteButton) {
+    if (confirm("Удалить твой лот из каталога?")) {
+      deleteAccount(ownerDeleteButton.dataset.ownerDelete);
+    }
+    return;
+  }
+
   const buyButton = event.target.closest("[data-buy]");
   if (buyButton) {
     openBuyModal(buyButton.dataset.buy);
@@ -382,9 +460,7 @@ adminAccounts.addEventListener("click", (event) => {
   const deleteButton = event.target.closest("[data-delete]");
   if (!deleteButton) return;
 
-  database.accounts = database.accounts.filter((account) => account.id !== deleteButton.dataset.delete);
-  saveDatabase();
-  renderAccounts();
+  deleteAccount(deleteButton.dataset.delete);
 });
 
 searchInput.addEventListener("input", renderAccounts);
@@ -424,9 +500,11 @@ sellForm.addEventListener("submit", async (event) => {
     return;
   }
 
+  const accountId = createId();
+
   database.accounts = [
     {
-      id: createId(),
+      id: accountId,
       title: data.get("title").trim(),
       trophies,
       brawlers,
@@ -442,6 +520,7 @@ sellForm.addEventListener("submit", async (event) => {
     ...database.accounts,
   ];
 
+  rememberOwnedAccount(accountId);
   saveDatabase();
   sellForm.reset();
   imagePreview.classList.add("hidden");
@@ -490,6 +569,7 @@ exportDb.addEventListener("click", () => {
 
 clearAccounts.addEventListener("click", () => {
   database.accounts = [];
+  saveOwnedAccountIds([]);
   saveDatabase();
   renderAccounts();
 });
