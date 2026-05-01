@@ -7,6 +7,7 @@ const ACTIVE_SECTION_KEY = "fsale_active_section";
 const OWNED_ACCOUNTS_KEY = "fsale_owned_accounts_v1";
 const LOCAL_ACCOUNTS_MIGRATED_KEY = "fsale_local_accounts_migrated_v1";
 const REMOTE_DB_URL = "https://mantledb.sh/v2/f-sale-timur-annaklichov-20260430/database";
+const GOOGLE_CLIENT_ID = "";
 
 const defaultDatabase = {
   users: [
@@ -15,6 +16,14 @@ const defaultDatabase = {
       login: "Timur",
       passwordHash: "386d5796526ca17bd7dfea3799105e50cbdd300eae4f4b9a798127dc9903bac5",
       name: "Timur",
+      role: "admin",
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: "akyma",
+      login: "Akyma",
+      passwordHash: "386d5796526ca17bd7dfea3799105e50cbdd300eae4f4b9a798127dc9903bac5",
+      name: "Akyma",
       role: "admin",
       createdAt: new Date().toISOString(),
     },
@@ -42,6 +51,9 @@ const loginModal = document.querySelector("#loginModal");
 const closeLogin = document.querySelector("#closeLogin");
 const loginError = document.querySelector("#loginError");
 const registerError = document.querySelector("#registerError");
+const googleError = document.querySelector("#googleError");
+const googleButton = document.querySelector("#googleButton");
+const googleFallback = document.querySelector("#googleFallback");
 const userLogin = document.querySelector("#userLogin");
 const userRegister = document.querySelector("#userRegister");
 const authTabs = document.querySelectorAll("[data-auth-mode]");
@@ -450,6 +462,21 @@ function normalizeLogin(login) {
   return login.trim().toLowerCase();
 }
 
+function decodeJwtPayload(token) {
+  const [, payload] = token.split(".");
+  if (!payload) throw new Error("Google не вернул данные аккаунта.");
+
+  const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+  const json = decodeURIComponent(
+    atob(base64)
+      .split("")
+      .map((char) => `%${char.charCodeAt(0).toString(16).padStart(2, "0")}`)
+      .join(""),
+  );
+
+  return JSON.parse(json);
+}
+
 function readImage(file) {
   if (!file || !file.size) return Promise.resolve("");
 
@@ -682,6 +709,7 @@ function clearLoginForm() {
   registerError.textContent = "Такой логин уже занят.";
   loginError.classList.add("hidden");
   registerError.classList.add("hidden");
+  googleError.classList.add("hidden");
 }
 
 function setAuthMode(mode) {
@@ -698,8 +726,77 @@ function setAuthMode(mode) {
 function openLoginModal(mode = "login") {
   clearLoginForm();
   setAuthMode(mode);
+  initGoogleAuth();
   loginModal.showModal();
   refreshIcons();
+}
+
+function showGoogleError(message) {
+  googleError.textContent = message;
+  googleError.classList.remove("hidden");
+}
+
+function initGoogleAuth() {
+  if (!GOOGLE_CLIENT_ID) {
+    googleButton.innerHTML = "";
+    googleFallback.classList.remove("hidden");
+    return;
+  }
+
+  if (!window.google?.accounts?.id) return;
+
+  googleFallback.classList.add("hidden");
+  googleButton.innerHTML = "";
+  window.google.accounts.id.initialize({
+    client_id: GOOGLE_CLIENT_ID,
+    callback: handleGoogleCredential,
+  });
+  window.google.accounts.id.renderButton(googleButton, {
+    theme: document.body.classList.contains("dark") ? "filled_black" : "outline",
+    size: "large",
+    width: Math.min(360, loginModal.clientWidth - 48),
+    text: "continue_with",
+  });
+}
+
+async function handleGoogleCredential(response) {
+  try {
+    const profile = decodeJwtPayload(response.credential);
+    const email = normalizeLogin(profile.email || "");
+    const googleId = profile.sub ? `google:${profile.sub}` : "";
+
+    if (!email || !googleId) {
+      throw new Error("Google не вернул email аккаунта.");
+    }
+
+    await ensureRemoteDatabaseReady();
+
+    let user = database.users.find((item) => item.googleId === googleId || normalizeLogin(item.email || "") === email);
+    if (!user) {
+      user = {
+        id: createId(),
+        login: email,
+        email,
+        googleId,
+        passwordHash: "",
+        name: profile.name || email,
+        role: "user",
+        contact: email,
+        createdAt: new Date().toISOString(),
+      };
+      database.users = [...database.users, user];
+      await saveDatabase();
+    }
+
+    setUserSession(user);
+    loginModal.close();
+    clearLoginForm();
+    showSection(pendingSectionAfterLogin || "sell");
+    pendingSectionAfterLogin = null;
+    refreshIcons();
+  } catch (error) {
+    showGoogleError(error.message);
+  }
 }
 
 filters.forEach((button) => {
@@ -715,6 +812,10 @@ authTabs.forEach((button) => {
   button.addEventListener("click", () => {
     setAuthMode(button.dataset.authMode);
   });
+});
+
+googleFallback.addEventListener("click", () => {
+  showGoogleError("Чтобы включить Google, добавь Google Client ID в GOOGLE_CLIENT_ID в script.js.");
 });
 
 navButtons.forEach((button) => {
