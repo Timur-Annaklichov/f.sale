@@ -11,6 +11,10 @@ PORT = int(os.environ.get('PORT', 3000))
 DB_FILE = 'db.json'
 TG_TOKEN = '8483206778:AAGzc0fy8JWIP5uZ24EK2Zv7iiSmM_ETD3M'
 
+if not os.path.exists(DB_FILE):
+    with open(DB_FILE, 'w', encoding='utf-8') as f:
+        json.dump({"users": [], "accounts": [], "messages": []}, f)
+
 pending_verifications = {} # code -> user_data
 
 def send_tg_message(chat_id, text):
@@ -240,7 +244,12 @@ class DatabaseHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(json.dumps(data).encode('utf-8'))
 
+import socketserver
+
+class ThreadingSimpleServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+    pass
+
 if __name__ == '__main__':
-    server = http.server.HTTPServer(('0.0.0.0', PORT), DatabaseHandler)
-    print(f"Server started at http://localhost:{PORT}")
+    server = ThreadingSimpleServer(('', PORT), DatabaseHandler)
+    print(f"Server started at port {PORT}")
     server.serve_forever()
