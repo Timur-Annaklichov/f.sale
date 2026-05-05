@@ -64,9 +64,13 @@ class DatabaseHandler(http.server.BaseHTTPRequestHandler):
     def serve_messages(self):
         query = urllib.parse.urlparse(self.path).query
         params = urllib.parse.parse_qs(query)
+        is_all = params.get('all', ['false'])[0].lower() == 'true'
         lot_id = params.get('lotId', ['general'])[0]
         db = self.read_db()
-        messages = [m for m in db.get('messages', []) if m.get('lotId', 'general') == lot_id]
+        if is_all:
+            messages = db.get('messages', [])
+        else:
+            messages = [m for m in db.get('messages', []) if m.get('lotId', 'general') == lot_id]
         self.send_json_response(messages)
 
     def save_db(self, data):

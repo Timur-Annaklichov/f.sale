@@ -63,7 +63,7 @@ const chatForm = document.querySelector("#chatForm");
 const chatInput = document.querySelector("#chatInput");
 const chatTitle = document.querySelector("#chat-title");
 const chatType = document.querySelector("#chatType");
-const backToGeneralChat = document.querySelector("#backToGeneralChat");
+const chatList = document.querySelector("#chatList");
 
 // Admin tools
 const superAdminTools = document.querySelector("#superAdminTools");
@@ -77,6 +77,7 @@ let isRemoteDatabaseReady = false;
 let pendingSectionAfterLogin = null;
 let chatPollingInterval = null;
 let currentChatId = "general";
+let allMessages = [];
 
 async function init() {
     try {
@@ -156,6 +157,7 @@ async function syncRemoteDatabase() {
     renderAccounts();
     renderAdminAccounts();
     updateStats();
+    if (pageViews[3] && pageViews[3].classList.contains("active")) fetchMessages();
   } catch (error) {
     isRemoteDatabaseReady = false;
     statsStorage.textContent = "offline (local)";
@@ -397,23 +399,67 @@ function stopChatPolling() {
 
 async function fetchMessages() {
     try {
-        const response = await fetch(`${MESSAGES_URL}?lotId=${currentChatId}`);
-        const messages = await response.json();
-        renderMessages(messages);
+        const response = await fetch(`${MESSAGES_URL}?all=true`);
+        allMessages = await response.json();
+        renderChatList();
+        renderMessages();
     } catch (e) {
         console.error("Chat fetch error", e);
     }
 }
 
-function renderMessages(messages) {
-    const html = messages.map(m => `
+function renderChatList() {
+    if (!currentUser) return;
+    const userChats = new Map();
+    userChats.set("general", {
+        id: "general",
+        name: "Общий чат",
+        type: "Общение",
+        lastMsg: allMessages.filter(m => m.lotId === "general").pop()?.text || "Сообщений нет"
+    });
+    
+    allMessages.forEach(m => {
+        if (m.lotId.startsWith("private_")) {
+            const [, id1, id2] = m.lotId.split("_");
+            if (id1 === currentUser.id || id2 === currentUser.id) {
+                const otherId = id1 === currentUser.id ? id2 : id1;
+                const otherUser = database.users.find(u => u.id === otherId);
+                const otherName = otherUser ? otherUser.name : "Пользователь";
+                if (!userChats.has(m.lotId)) {
+                    userChats.set(m.lotId, { id: m.lotId, name: otherName, type: "Личный чат", lastMsg: m.text });
+                } else {
+                    userChats.get(m.lotId).lastMsg = m.text;
+                }
+            }
+        }
+    });
+
+    chatList.innerHTML = Array.from(userChats.values()).map(c => `
+        <div class="chat-item ${currentChatId === c.id ? 'active' : ''}" onclick="switchToChat('${c.id}', '${c.name}', '${c.type}')">
+            <span class="name">${c.name}</span>
+            <span class="last-msg">${c.lastMsg}</span>
+        </div>
+    `).join("");
+}
+
+window.switchToChat = (id, name, type) => {
+    currentChatId = id;
+    chatTitle.textContent = name;
+    chatType.textContent = type;
+    renderChatList();
+    renderMessages();
+};
+
+function renderMessages() {
+    const filtered = allMessages.filter(m => m.lotId === currentChatId);
+    const html = filtered.map(m => `
         <div class="chat-message ${currentUser && m.userId === currentUser.id ? 'own' : 'other'}">
             <span class="user">${m.userName}</span>
             ${m.text}
             <span class="time">${new Date(m.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
         </div>
     `).join("");
-    const shouldScroll = chatMessages.scrollTop + chatMessages.clientHeight >= chatMessages.scrollHeight - 50;
+    const shouldScroll = chatMessages.scrollTop + chatMessages.clientHeight >= chatMessages.scrollHeight - 100;
     chatMessages.innerHTML = html;
     if (shouldScroll) chatMessages.scrollTop = chatMessages.scrollHeight;
 }
@@ -423,7 +469,6 @@ chatForm.addEventListener("submit", async (e) => {
     if (!currentUser) return showSection("home");
     const text = chatInput.value.trim();
     if (!text) return;
-    
     chatInput.value = "";
     try {
         await fetch(MESSAGES_URL, {
@@ -442,25 +487,16 @@ chatForm.addEventListener("submit", async (e) => {
     }
 });
 
-window.openPrivateChat = (lotId) => {
-    const lot = database.accounts.find(a => a.id === lotId);
-    if (!lot) return;
-    
-    currentChatId = lotId;
-    chatTitle.textContent = lot.title;
-    chatType.textContent = "Чат по товару";
-    backToGeneralChat.classList.remove("hidden");
+window.openPrivateChat = (sellerId) => {
+    if (!currentUser) return openLoginModal("register");
+    if (sellerId === currentUser.id) return alert("Это ваш товар!");
+    const ids = [currentUser.id, sellerId].sort();
+    currentChatId = `private_${ids[0]}_${ids[1]}`;
+    const seller = database.users.find(u => u.id === sellerId);
+    switchToChat(currentChatId, seller ? seller.name : "Продавец", "Личный чат");
     modal.close();
     showSection("chat");
 };
-
-backToGeneralChat.addEventListener("click", () => {
-    currentChatId = "general";
-    chatTitle.textContent = "Общий чат";
-    chatType.textContent = "Общение";
-    backToGeneralChat.classList.add("hidden");
-    fetchMessages();
-});
 
 // Admin promotion
 promoteForm.addEventListener("submit", async (e) => {
@@ -490,7 +526,6 @@ navButtons.forEach(b => b.addEventListener("click", () => {
         currentChatId = "general";
         chatTitle.textContent = "Общий чат";
         chatType.textContent = "Общение";
-        backToGeneralChat.classList.add("hidden");
     }
     showSection(b.dataset.section);
 }));

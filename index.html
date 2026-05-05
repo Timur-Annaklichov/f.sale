@@ -99,24 +99,32 @@
       </section>
 
       <section class="chat page-view" id="chat" data-page="chat" aria-labelledby="chat-title">
-        <div class="section-head">
-          <div>
-            <p class="eyebrow" id="chatType">Общение</p>
-            <h2 id="chat-title">Общий чат</h2>
+        <div class="chat-layout">
+          <div class="chat-sidebar">
+            <div class="sidebar-head">
+              <h3>Мои диалоги</h3>
+            </div>
+            <div class="chat-list" id="chatList">
+              <!-- Chat items will be rendered here -->
+            </div>
           </div>
-          <button class="button secondary small hidden" id="backToGeneralChat" type="button">
-            <i data-lucide="arrow-left"></i>
-            В общий чат
-          </button>
-        </div>
-        <div class="chat-container">
-          <div class="chat-messages" id="chatMessages"></div>
-          <form class="chat-form" id="chatForm">
-            <input type="text" id="chatInput" placeholder="Напишите сообщение..." required autocomplete="off" />
-            <button class="button primary" type="submit">
-              <i data-lucide="send"></i>
-            </button>
-          </form>
+          <div class="chat-main">
+            <div class="chat-header">
+              <div id="activeChatInfo">
+                <p class="eyebrow" id="chatType">Общение</p>
+                <h2 id="chat-title">Общий чат</h2>
+              </div>
+            </div>
+            <div class="chat-container">
+              <div class="chat-messages" id="chatMessages"></div>
+              <form class="chat-form" id="chatForm">
+                <input type="text" id="chatInput" placeholder="Напишите сообщение..." required autocomplete="off" />
+                <button class="button primary" type="submit">
+                  <i data-lucide="send"></i>
+                </button>
+              </form>
+            </div>
+          </div>
         </div>
       </section>
 
