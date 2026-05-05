@@ -643,4 +643,18 @@ function setAuthMode(mode) {
 }
 
 
+function openBuyModal(id) {
+  const a = database.accounts.find((i) => i.id === id);
+  if (!a) return;
+  modalContent.innerHTML = `
+    ${a.image ? `<img class="modal-image" src="${a.image}" />` : ""}
+    <h3>${a.title}</h3>
+    <div class="modal-desc">${a.description}</div>
+    <p class="card-meta">Цена: ${formatNumber(a.price)} ₽</p>
+    <button class="button primary wide" onclick="openPrivateChat('${a.ownerId}')">Перейти в чат к продавцу</button>
+  `;
+  modal.showModal();
+  refreshIcons();
+}
+
 init();
