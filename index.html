@@ -101,9 +101,13 @@
       <section class="chat page-view" id="chat" data-page="chat" aria-labelledby="chat-title">
         <div class="section-head">
           <div>
-            <p class="eyebrow">Общение</p>
+            <p class="eyebrow" id="chatType">Общение</p>
             <h2 id="chat-title">Общий чат</h2>
           </div>
+          <button class="button secondary small hidden" id="backToGeneralChat" type="button">
+            <i data-lucide="arrow-left"></i>
+            В общий чат
+          </button>
         </div>
         <div class="chat-container">
           <div class="chat-messages" id="chatMessages"></div>

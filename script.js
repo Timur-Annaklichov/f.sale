@@ -61,6 +61,9 @@ const statsStorage = document.querySelector("#statsStorage");
 const chatMessages = document.querySelector("#chatMessages");
 const chatForm = document.querySelector("#chatForm");
 const chatInput = document.querySelector("#chatInput");
+const chatTitle = document.querySelector("#chat-title");
+const chatType = document.querySelector("#chatType");
+const backToGeneralChat = document.querySelector("#backToGeneralChat");
 
 // Admin tools
 const superAdminTools = document.querySelector("#superAdminTools");
@@ -73,6 +76,7 @@ let currentAdmin = restoreAdminSession();
 let isRemoteDatabaseReady = false;
 let pendingSectionAfterLogin = null;
 let chatPollingInterval = null;
+let currentChatId = "general";
 
 async function init() {
     try {
@@ -369,7 +373,7 @@ function openBuyModal(id) {
     <h3>${a.title}</h3>
     <div class="modal-desc">${a.description}</div>
     <p class="card-meta">Цена: ${formatNumber(a.price)} ₽</p>
-    <button class="button primary wide" onclick="showSection('chat')">Перейти в чат</button>
+    <button class="button primary wide" onclick="openPrivateChat('${a.id}')">Перейти в чат по товару</button>
   `;
   modal.showModal();
   refreshIcons();
@@ -393,7 +397,7 @@ function stopChatPolling() {
 
 async function fetchMessages() {
     try {
-        const response = await fetch(MESSAGES_URL);
+        const response = await fetch(`${MESSAGES_URL}?lotId=${currentChatId}`);
         const messages = await response.json();
         renderMessages(messages);
     } catch (e) {
@@ -426,6 +430,7 @@ chatForm.addEventListener("submit", async (e) => {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
+                lotId: currentChatId,
                 userId: currentUser.id,
                 userName: currentUser.name,
                 text: text
@@ -435,6 +440,26 @@ chatForm.addEventListener("submit", async (e) => {
     } catch (e) {
         alert("Ошибка отправки сообщения");
     }
+});
+
+window.openPrivateChat = (lotId) => {
+    const lot = database.accounts.find(a => a.id === lotId);
+    if (!lot) return;
+    
+    currentChatId = lotId;
+    chatTitle.textContent = lot.title;
+    chatType.textContent = "Чат по товару";
+    backToGeneralChat.classList.remove("hidden");
+    modal.close();
+    showSection("chat");
+};
+
+backToGeneralChat.addEventListener("click", () => {
+    currentChatId = "general";
+    chatTitle.textContent = "Общий чат";
+    chatType.textContent = "Общение";
+    backToGeneralChat.classList.add("hidden");
+    fetchMessages();
 });
 
 // Admin promotion
@@ -460,7 +485,15 @@ promoteForm.addEventListener("submit", async (e) => {
 });
 
 // Event Listeners
-navButtons.forEach(b => b.addEventListener("click", () => showSection(b.dataset.section)));
+navButtons.forEach(b => b.addEventListener("click", () => {
+    if (b.dataset.section === "chat") {
+        currentChatId = "general";
+        chatTitle.textContent = "Общий чат";
+        chatType.textContent = "Общение";
+        backToGeneralChat.classList.add("hidden");
+    }
+    showSection(b.dataset.section);
+}));
 searchInput.addEventListener("input", renderAccounts);
 
 sellForm.addEventListener("submit", async (e) => {
@@ -573,5 +606,6 @@ function setAuthMode(mode) {
     userLogin.classList.toggle("hidden", mode !== "login");
     userRegister.classList.toggle("hidden", mode !== "register");
 }
+
 
 init();

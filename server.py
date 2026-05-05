@@ -1,6 +1,7 @@
 import http.server
 import json
 import os
+import urllib.parse
 from datetime import datetime
 
 PORT = int(os.environ.get('PORT', 3000))
@@ -61,8 +62,12 @@ class DatabaseHandler(http.server.BaseHTTPRequestHandler):
         self.send_json_response(db)
 
     def serve_messages(self):
+        query = urllib.parse.urlparse(self.path).query
+        params = urllib.parse.parse_qs(query)
+        lot_id = params.get('lotId', ['general'])[0]
         db = self.read_db()
-        self.send_json_response(db.get('messages', []))
+        messages = [m for m in db.get('messages', []) if m.get('lotId', 'general') == lot_id]
+        self.send_json_response(messages)
 
     def save_db(self, data):
         with open(DB_FILE, 'w', encoding='utf-8') as f:
@@ -72,6 +77,7 @@ class DatabaseHandler(http.server.BaseHTTPRequestHandler):
         db = self.read_db()
         new_msg = {
             'id': str(int(datetime.now().timestamp() * 1000)),
+            'lotId': msg_data.get('lotId', 'general'),
             **msg_data,
             'createdAt': datetime.now().isoformat()
         }
