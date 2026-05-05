@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>F.sale - аккаунты Brawl Stars</title>
+    <title>F.sale - Tide PvP ресурсы</title>
     <meta
       name="description"
-      content="Минималистичная витрина для продажи и покупки аккаунтов Brawl Stars."
+      content="Платформа для быстрой и безопасной покупки и продажи ресурсов в Tide PvP."
     />
     <link rel="stylesheet" href="styles.css" />
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
@@ -24,6 +24,7 @@
         <button class="nav-button active" type="button" data-section="home">Главная</button>
         <button class="nav-button" type="button" data-section="market">Маркет</button>
         <button class="nav-button" type="button" data-section="sell">Продать</button>
+        <button class="nav-button" type="button" data-section="chat">Чат</button>
         <button class="nav-button hidden" id="adminNavButton" type="button" data-section="admin">
           Админка
         </button>
@@ -48,20 +49,19 @@
     <main>
       <section class="hero page-view active" data-page="home" aria-labelledby="hero-title">
         <div class="hero-copy">
-          <p class="eyebrow">Brawl Stars marketplace</p>
+          <p class="eyebrow">Tide PvP marketplace</p>
           <h1 id="hero-title">F.sale</h1>
           <p>
-            Покупай и продавай аккаунты Brawl Stars в чистом каталоге без лишнего шума:
-            трофеи, бойцы, скины и цена видны сразу.
+            Платформа для быстрой и безопасной покупки и продажи ресурсов в Tide PvP. Удобный маркет, честные сделки и выгодные цены для всех игроков. Продавай добытое или покупай нужное — без лишних сложностей.
           </p>
           <div class="hero-actions">
             <button class="button primary" type="button" data-section="market">
               <i data-lucide="shopping-bag"></i>
-              Смотреть аккаунты
+              Смотреть маркет
             </button>
             <button class="button secondary" type="button" data-section="sell">
               <i data-lucide="badge-plus"></i>
-              Выставить аккаунт
+              Продать ресурсы
             </button>
           </div>
         </div>
@@ -71,7 +71,7 @@
       <section class="stats page-view active" data-page="home" aria-label="Показатели сервиса">
         <div>
           <span id="statsAccounts">0</span>
-          <p>аккаунта в каталоге</p>
+          <p>лотов в каталоге</p>
         </div>
         <div>
           <span id="statsUsers">1</span>
@@ -87,66 +87,60 @@
         <div class="section-head">
           <div>
             <p class="eyebrow">Каталог</p>
-            <h2 id="market-title">Аккаунты на продаже</h2>
+            <h2 id="market-title">Ресурсы на продаже</h2>
           </div>
           <div class="search">
             <i data-lucide="search"></i>
-            <input id="searchInput" type="search" placeholder="Поиск по названию, рангу, тегу" />
+            <input id="searchInput" type="search" placeholder="Поиск по описанию, продавцу" />
           </div>
-        </div>
-
-        <div class="toolbar" aria-label="Фильтры каталога">
-          <button class="filter active" type="button" data-filter="all">Все</button>
-          <button class="filter" type="button" data-filter="legendary">Легендарные</button>
-          <button class="filter" type="button" data-filter="high-trophy">50k+</button>
-          <button class="filter" type="button" data-filter="budget">До 5 000 ₽</button>
-          <button class="filter" id="refreshMarket" type="button">
-            <i data-lucide="refresh-cw"></i>
-            Обновить
-          </button>
         </div>
 
         <div class="cards" id="accountList"></div>
       </section>
 
+      <section class="chat page-view" id="chat" data-page="chat" aria-labelledby="chat-title">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Общение</p>
+            <h2 id="chat-title">Общий чат</h2>
+          </div>
+        </div>
+        <div class="chat-container">
+          <div class="chat-messages" id="chatMessages"></div>
+          <form class="chat-form" id="chatForm">
+            <input type="text" id="chatInput" placeholder="Напишите сообщение..." required autocomplete="off" />
+            <button class="button primary" type="submit">
+              <i data-lucide="send"></i>
+            </button>
+          </form>
+        </div>
+      </section>
+
       <section class="sell page-view" id="sell" data-page="sell" aria-labelledby="sell-title">
         <div class="sell-copy">
           <p class="eyebrow">Продажа</p>
-          <h2 id="sell-title">Выставить аккаунт</h2>
+          <h2 id="sell-title">Выставить лот</h2>
           <p>
-            Заполни основные данные, и карточка появится в каталоге. Данные сохраняются
-            в общей базе маркета.
+            Заполни основные данные и добавь описание. Твой лот сразу появится в каталоге Tide PvP.
           </p>
         </div>
 
         <form class="sell-form" id="sellForm">
-          <label>
-            Название
-            <input name="title" type="text" placeholder="Например: Mythic Main" required />
+          <label class="wide">
+            Название (кратко)
+            <input name="title" type="text" placeholder="Например: Сет брони или 1000 коинов" required />
           </label>
-          <label>
-            Трофеи
-            <input name="trophies" type="number" min="0" placeholder="54000" required />
+          <label class="wide">
+            Описание
+            <textarea name="description" placeholder="Подробно опиши что ты продаешь..." rows="4" required></textarea>
           </label>
-          <label>
-            Бойцы
-            <input name="brawlers" type="number" min="1" placeholder="78" required />
-          </label>
-          <label>
-            Легендарные
-            <input name="legendary" type="number" min="0" placeholder="12" required />
-          </label>
-          <label>
+          <label class="wide">
             Цена, ₽
-            <input name="price" type="number" min="1" placeholder="6900" required />
-          </label>
-          <label>
-            Telegram
-            <input name="contact" type="text" placeholder="@seller" required />
+            <input name="price" type="number" min="1" placeholder="500" required />
           </label>
           <label class="image-field wide">
-            Картинка аккаунта
-            <input name="image" id="accountImage" type="file" accept="image/*" required />
+            Скриншот товара (необязательно)
+            <input name="image" id="accountImage" type="file" accept="image/*" />
             <span class="image-hint">PNG, JPG или WEBP</span>
             <span class="image-preview hidden" id="imagePreview"></span>
           </label>
@@ -162,9 +156,21 @@
           <p class="eyebrow">Admin</p>
           <h2 id="admin-title">Админка F.sale</h2>
           <p>
-            Раздел виден только пользователям из базы данных с ролью <b>admin</b>.
+            Раздел виден только администраторам.
           </p>
+          
+          <div id="superAdminTools" class="hidden">
+            <p class="eyebrow" style="margin-top: 24px;">Управление доступом</p>
+            <form id="promoteForm" class="admin-panel" style="display: grid; gap: 12px; margin-top: 12px;">
+              <label style="display: grid; gap: 8px; font-size: 13px; font-weight: 700;">
+                Логин пользователя для назначения админом
+                <input type="text" name="promote_login" placeholder="Введите логин" required />
+              </label>
+              <button class="button primary" type="submit">Назначить админом</button>
+            </form>
+          </div>
         </div>
+
 
         <div class="admin-panel">
           <div class="admin-dashboard" id="adminDashboard">
