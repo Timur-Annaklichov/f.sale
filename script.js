@@ -343,7 +343,7 @@ window.startProfileLinking = async () => {
             setAuthMode("register"); // This hides other forms
             currentPendingLogin = currentUser.login;
             loginModal.showModal();
-            showVerificationStep();
+            showVerificationStep(result.code);
         }
     } catch (e) {
         alert("Ошибка сервера");
@@ -885,7 +885,7 @@ async function startPasswordRecovery() {
         if (result.success) {
             currentPendingLogin = login;
             isRecoveryMode = true;
-            showVerificationStep();
+            showVerificationStep(result.code);
         } else {
             alert(result.message);
         }
@@ -922,7 +922,7 @@ userRegister.addEventListener("submit", async (e) => {
         
         if (result.success) {
             currentPendingLogin = login;
-            showVerificationStep();
+            showVerificationStep(result.code);
         } else {
             alert("Ошибка при регистрации");
         }
@@ -931,87 +931,103 @@ userRegister.addEventListener("submit", async (e) => {
     }
 });
 
-function showVerificationStep() {
+let verificationInterval = null;
+
+function stopPolling() {
+    if (verificationInterval) {
+        clearInterval(verificationInterval);
+        verificationInterval = null;
+    }
+}
+
+function startPolling() {
+    stopPolling();
+    verificationInterval = setInterval(async () => {
+        if (!currentPendingLogin) return stopPolling();
+        try {
+            const response = await fetch(`${API_BASE}/auth/check-status?login=${currentPendingLogin}`);
+            const result = await response.json();
+            
+            if (result.success) {
+                if (result.step === 'password') {
+                    stopPolling();
+                    document.querySelector("#codeDisplayArea").classList.add("hidden");
+                    document.querySelector("#pollingIndicator").classList.add("hidden");
+                    document.querySelector("#recoveryPassLabel").classList.remove("hidden");
+                    document.querySelector("#verificationText").textContent = "Успешно! Теперь введите новый пароль.";
+                } else if (result.user) {
+                    stopPolling();
+                    setUserSession(result.user);
+                    loginModal.close();
+                    if (localStorage.getItem(ACTIVE_SECTION_KEY) === "profile") renderProfile();
+                }
+            } else if (!result.pending) {
+                stopPolling();
+                alert(result.message || "Ошибка верификации");
+                setAuthMode("login");
+            }
+        } catch (e) {
+            console.error("Polling error", e);
+        }
+    }, 2000);
+}
+
+function showVerificationStep(code) {
     userRegister.classList.add("hidden");
     userLogin.classList.add("hidden");
     verificationStep.classList.remove("hidden");
     
+    const codeDisplay = document.querySelector("#generatedCodeDisplay");
+    if (codeDisplay && code) codeDisplay.textContent = code;
+    
+    document.querySelector("#codeDisplayArea").classList.remove("hidden");
+    document.querySelector("#pollingIndicator").classList.remove("hidden");
+    
     const vTitle = document.querySelector("#verificationTitle");
     const vText = document.querySelector("#verificationText");
-    const codeLabel = verificationCodeInput.parentElement;
     const passLabel = document.querySelector("#recoveryPassLabel");
+    
+    passLabel.classList.add("hidden");
     
     if (isRecoveryMode) {
         vTitle.textContent = "Восстановление пароля";
-        vText.textContent = "Нажмите кнопку 'Восстановление пароля' в боте.";
-        codeLabel.classList.remove("hidden");
-        passLabel.classList.add("hidden");
     } else {
         vTitle.textContent = "Подтверждение Telegram";
-        vText.textContent = "Нажмите кнопку 'Привязать аккаунт' в боте.";
-        codeLabel.classList.remove("hidden");
-        passLabel.classList.add("hidden");
     }
+    
+    startPolling();
 }
 
 verificationForm.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const code = verificationCodeInput.value.trim();
-    const passLabel = document.querySelector("#recoveryPassLabel");
-    const codeLabel = verificationCodeInput.parentElement;
-    
-    if (!code || !currentPendingLogin) return;
+    if (!currentPendingLogin || !isRecoveryMode) return;
     
     try {
-        if (isRecoveryMode) {
-            if (passLabel.classList.contains("hidden")) {
-                // Step 1: Verify code
-                const response = await fetch(`${API_BASE}/auth/verify-code?login=${currentPendingLogin}&code=${code}`);
-                const result = await response.json();
-                if (result.success) {
-                    // Show password input
-                    codeLabel.classList.add("hidden");
-                    passLabel.classList.remove("hidden");
-                    document.querySelector("#verificationText").textContent = "Теперь введите новый пароль.";
-                    // We don't clear code yet, we need it for the final submit
-                } else {
-                    alert(result.message || "Неверный код");
-                }
-            } else {
-                // Step 2: Set new password
-                const newPass = document.querySelector("#recoveryNewPass").value;
-                if (newPass.length < 4) return alert("Пароль слишком короткий");
-                const hash = await hashText(newPass);
-                const response = await fetch(`${API_BASE}/auth/verify-recovery`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ login: currentPendingLogin, code, passwordHash: hash })
-                });
-                const result = await response.json();
-                if (result.success) {
-                    alert("Пароль успешно изменен!");
-                    setAuthMode("login");
-                } else {
-                    alert(result.message || "Ошибка");
-                }
-            }
+        const newPass = document.querySelector("#recoveryNewPass").value;
+        if (newPass.length < 4) return alert("Пароль слишком короткий");
+        const hash = await hashText(newPass);
+        const response = await fetch(`${API_BASE}/auth/verify-recovery`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ login: currentPendingLogin, passwordHash: hash })
+        });
+        const result = await response.json();
+        if (result.success) {
+            alert("Пароль успешно изменен!");
+            setAuthMode("login");
         } else {
-            // Standard registration/linking
-            const response = await fetch(`${API_BASE}/auth/verify-code?login=${currentPendingLogin}&code=${code}`);
-            const result = await response.json();
-            
-            if (result.success) {
-                setUserSession(result.user);
-                loginModal.close();
-                if (localStorage.getItem(ACTIVE_SECTION_KEY) === "profile") renderProfile();
-            } else {
-                alert(result.message || "Неверный код");
-            }
+            alert(result.message || "Ошибка");
         }
     } catch (e) {
-        alert("Ошибка подтверждения");
+        alert("Ошибка изменения пароля");
     }
 });
+
+const originalSetAuthMode = setAuthMode;
+window.setAuthMode = function(mode) {
+    stopPolling();
+    originalSetAuthMode(mode);
+};
 
 logoutUser.addEventListener("click", () => {
     clearUserSession();
@@ -1034,7 +1050,10 @@ if (localStorage.getItem(THEME_KEY) === "dark") {
     themeToggle.innerHTML = `<i data-lucide="sun"></i>`;
 }
 
-closeLogin.addEventListener("click", () => loginModal.close());
+closeLogin.addEventListener("click", () => {
+    stopPolling();
+    loginModal.close();
+});
 openLogin.addEventListener("click", () => openLoginModal());
 closeModal.addEventListener("click", () => modal.close());
 

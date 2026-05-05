@@ -1196,3 +1196,5 @@ h3 {
     display: flex !important;
   }
 }
+@ k e y f r a m e s   p u l s e   {   0 %   {   o p a c i t y :   1 ;   t r a n s f o r m :   s c a l e ( 1 ) ;   }   5 0 %   {   o p a c i t y :   0 . 5 ;   t r a n s f o r m :   s c a l e ( 0 . 8 ) ;   }   1 0 0 %   {   o p a c i t y :   1 ;   t r a n s f o r m :   s c a l e ( 1 ) ;   }   }  
+ 

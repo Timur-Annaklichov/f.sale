@@ -360,25 +360,28 @@
 
       <div class="auth-form hidden" id="verificationStep">
         <p class="eyebrow">Verification</p>
-        <h3 id="verificationTitle">Проверьте Telegram</h3>
+        <h3 id="verificationTitle">Отправьте код боту</h3>
         <p id="verificationText" style="margin-bottom: 20px; font-size: 14px; opacity: 0.8;">
-          Нажмите в боте кнопку <b>🔗 Привязать аккаунт</b> или <b>🔑 Восстановление пароля</b>.
+          Отправьте этот код нашему боту в Telegram для подтверждения:
         </p>
+        <div id="codeDisplayArea" style="text-align: center; margin-bottom: 20px;">
+          <h2 id="generatedCodeDisplay" style="letter-spacing: 8px; font-weight: bold; background: var(--border-color); padding: 15px; border-radius: 8px; font-size: 24px;">------</h2>
+        </div>
         <a href="https://t.me/fsale_verificationbot" target="_blank" class="button secondary wide" style="margin-bottom: 20px;">
           <i data-lucide="external-link"></i>
           Открыть бота
         </a>
         
         <form id="verificationForm">
-          <label>
-            Код из Telegram
-            <input type="text" id="verificationCodeInput" placeholder="123456" maxlength="6" style="text-align: center; letter-spacing: 4px; font-weight: bold;" required />
-          </label>
           <label id="recoveryPassLabel" class="hidden" style="margin-top: 12px; display: block;">
             Новый пароль
             <input type="password" id="recoveryNewPass" placeholder="Минимум 4 символа" minlength="4" />
+            <button class="button primary wide" type="submit" style="margin-top: 12px;">Сохранить пароль</button>
           </label>
-          <button class="button primary wide" type="submit">Подтвердить</button>
+          <div id="pollingIndicator" style="text-align: center; margin-top: 10px; opacity: 0.7; font-size: 13px;">
+            <span class="pulse-dot" style="display:inline-block; width:8px; height:8px; background:currentColor; border-radius:50%; margin-right:6px; animation: pulse 1.5s infinite;"></span>
+            Ожидание подтверждения...
+          </div>
           <button class="button ghost wide" type="button" onclick="setAuthMode('login')" style="margin-top: 10px;">Отмена</button>
         </form>
       </div>

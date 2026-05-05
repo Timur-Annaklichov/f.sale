@@ -53,35 +53,36 @@ def tg_bot_thread():
                     username = msg.get('from', {}).get('username', '').lower()
                     
                     if text == "/start":
-                        markup = {
-                            "keyboard": [
-                                [{"text": "🔗 Привязать аккаунт"}, {"text": "🔑 Восстановление пароля"}]
-                            ],
-                            "resize_keyboard": True,
-                            "one_time_keyboard": False
-                        }
-                        send_tg_message(chat_id, "Выберите действие:", markup)
-                    
-                    elif text == "🔗 Привязать аккаунт":
+                        send_tg_message(chat_id, "Отправьте мне 6-значный код, который вы получили на сайте.")
+                    elif text.isdigit() and len(text) == 6:
                         found = False
-                        for login, user_data in pending_verifications.items():
-                            if user_data.get('telegram', '').lstrip('@').lower() == username:
-                                code = str(random.randint(100000, 999999))
-                                user_data['chatId'] = chat_id
-                                user_data['tgCode'] = code
-                                send_tg_message(chat_id, f"Ваш код для привязки: {code}")
+                        for login, vdata in list(pending_verifications.items()):
+                            if vdata.get('tgCode') == text:
+                                vdata['chatId'] = chat_id
+                                vdata['telegram'] = username
+                                if vdata.get('recovery'):
+                                    vdata['verified'] = True
+                                    send_tg_message(chat_id, "Код подтвержден. Вернитесь на сайт для сброса пароля.")
+                                else:
+                                    db = read_db()
+                                    existing = next((u for u in db['users'] if u['login'].lower() == login), None)
+                                    if existing:
+                                        existing['chatId'] = chat_id
+                                        existing['telegram'] = username
+                                        vdata['user'] = existing
+                                    else:
+                                        new_user = {k: v for k, v in vdata.items() if k not in ['tgCode', 'verified', 'user']}
+                                        db['users'].append(new_user)
+                                        vdata['user'] = new_user
+                                    save_db(db)
+                                    vdata['verified'] = True
+                                    send_tg_message(chat_id, "Аккаунт успешно привязан! Вы можете вернуться на сайт.")
                                 found = True
                                 break
-                    
-                    elif text == "🔑 Восстановление пароля":
-                        db = read_db()
-                        user = next((u for u in db['users'] if u.get('telegram', '').lstrip('@').lower() == username), None)
-                        if user:
-                            code = str(random.randint(100000, 999999))
-                            pending_verifications[user['login'].lower()] = {'login': user['login'], 'tgCode': code, 'recovery': True}
-                            send_tg_message(chat_id, f"Ваш код для восстановления: {code}")
-                        else:
-                            send_tg_message(chat_id, "Ваш аккаунт не найден. Пожалуйста, убедитесь, что вы привязали Telegram на сайте.")
+                        if not found:
+                            send_tg_message(chat_id, "Код не найден или устарел.")
+                    else:
+                        send_tg_message(chat_id, "Пожалуйста, отправьте 6-значный код.")
 
         except Exception as e:
             print(f"Bot Error: {e}")
@@ -110,35 +111,29 @@ class DatabaseHandler(http.server.BaseHTTPRequestHandler):
         elif parsed_path == '/api/messages':
             self.serve_messages()
         elif parsed_path == '/api/auth/recover-init':
+            import random
             login = params.get('login', [''])[0].lower()
             db = self.read_db()
             user = next((u for u in db['users'] if u['login'].lower() == login), None)
             if user and user.get('chatId'):
-                pending_verifications[login] = {'login': login, 'recovery': True}
-                self.send_json_response({'success': True})
+                code = str(random.randint(100000, 999999))
+                pending_verifications[login] = {'login': login, 'tgCode': code, 'verified': False, 'recovery': True}
+                self.send_json_response({'success': True, 'code': code})
             else:
                 self.send_json_response({'success': False, 'message': 'Аккаунт не привязан к Telegram или не существует'})
-        elif parsed_path == '/api/auth/verify-code':
+        elif parsed_path == '/api/auth/check-status':
             login = params.get('login', [''])[0].lower()
-            code = params.get('code', [''])[0]
             if login in pending_verifications:
-                user_data = pending_verifications[login]
-                if user_data.get('tgCode') == code:
-                    pending_verifications.pop(login)
-                    user_data.pop('tgCode', None)
-                    db = self.read_db()
-                    # Check if it's an existing user or new
-                    existing = next((u for u in db['users'] if u['login'].lower() == login), None)
-                    if existing:
-                        existing['chatId'] = user_data['chatId']
-                        existing['telegram'] = user_data['telegram']
-                        user_data = existing
+                vdata = pending_verifications[login]
+                if vdata.get('verified'):
+                    if vdata.get('recovery'):
+                        self.send_json_response({'success': True, 'step': 'password'})
                     else:
-                        db['users'].append(user_data)
-                    self.save_db(db)
-                    self.send_json_response({'success': True, 'user': user_data})
+                        user_data = vdata.get('user')
+                        pending_verifications.pop(login)
+                        self.send_json_response({'success': True, 'user': user_data})
                 else:
-                    self.send_json_response({'success': False, 'message': 'Неверный код'})
+                    self.send_json_response({'success': False, 'pending': True})
             else:
                 self.send_json_response({'success': False, 'message': 'Сессия не найдена'})
         else:
@@ -174,15 +169,21 @@ class DatabaseHandler(http.server.BaseHTTPRequestHandler):
         elif parsed_path == '/api/users/promote':
             self.promote_user(data)
         elif parsed_path == '/api/auth/register-pending':
+            import random
+            code = str(random.randint(100000, 999999))
             data['id'] = str(int(datetime.now().timestamp() * 1000))
+            data['tgCode'] = code
+            data['verified'] = False
             pending_verifications[data['login'].lower()] = data
-            self.send_json_response({'success': True})
+            self.send_json_response({'success': True, 'code': code})
         elif parsed_path == '/api/auth/request-link':
             # Used for existing users to bind TG
+            import random
             login = data.get('login')
             telegram = data.get('telegram')
-            pending_verifications[login.lower()] = {'login': login, 'telegram': telegram}
-            self.send_json_response({'success': True})
+            code = str(random.randint(100000, 999999))
+            pending_verifications[login.lower()] = {'login': login, 'telegram': telegram, 'tgCode': code, 'verified': False}
+            self.send_json_response({'success': True, 'code': code})
         elif parsed_path == '/api/users/demote':
             db = self.read_db()
             user = next((u for u in db['users'] if u['login'] == data.get('login')), None)
@@ -209,11 +210,10 @@ class DatabaseHandler(http.server.BaseHTTPRequestHandler):
             self.send_json_response({'success': True})
         elif parsed_path == '/api/auth/verify-recovery':
             login = data.get('login').lower()
-            code = data.get('code')
             new_hash = data.get('passwordHash')
             if login in pending_verifications:
                 vdata = pending_verifications[login]
-                if vdata.get('recovery') and vdata.get('tgCode') == code:
+                if vdata.get('recovery') and vdata.get('verified'):
                     pending_verifications.pop(login)
                     db = self.read_db()
                     user = next((u for u in db['users'] if u['login'].lower() == login), None)
@@ -224,7 +224,7 @@ class DatabaseHandler(http.server.BaseHTTPRequestHandler):
                     else:
                         self.send_json_response({'success': False, 'message': 'Пользователь не найден'})
                 else:
-                    self.send_json_response({'success': False, 'message': 'Неверный код'})
+                    self.send_json_response({'success': False, 'message': 'Сессия не подтверждена'})
             else:
                 self.send_json_response({'success': False, 'message': 'Сессия не найдена'})
         else:
