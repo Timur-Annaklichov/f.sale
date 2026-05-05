@@ -3,7 +3,7 @@ import json
 import os
 from datetime import datetime
 
-PORT = 3000
+PORT = int(os.environ.get('PORT', 3000))
 DB_FILE = 'db.json'
 
 class DatabaseHandler(http.server.BaseHTTPRequestHandler):
