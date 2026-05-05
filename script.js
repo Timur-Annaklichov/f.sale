@@ -5,13 +5,24 @@ const USER_SESSION_KEY = "fsale_user_session_v1";
 const ACTIVE_SECTION_KEY = "fsale_active_section";
 const OWNED_ACCOUNTS_KEY = "fsale_owned_accounts_v1";
 
-const SUPABASE_URL = "https://iyzgjjrcaafaqgdhfzwv.supabase.co";
-const SUPABASE_KEY = "sb_publishable__l9BCvOUU26NKTeww8nA5g_XfqHdEIq";
-
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const API_BASE = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" 
+    ? "http://localhost:3000/api" 
+    : "/api";
+const REMOTE_DB_URL = `${API_BASE}/database`;
+const MESSAGES_URL = `${API_BASE}/messages`;
+const PROMOTE_URL = `${API_BASE}/users/promote`;
 
 const defaultDatabase = {
-  users: [],
+  users: [
+    {
+      id: "owner-timur",
+      login: "Timur",
+      passwordHash: "386d5796526ca17bd7dfea3799105e50cbdd300eae4f4b9a798127dc9903bac5",
+      name: "Timur",
+      role: "admin",
+      createdAt: new Date().toISOString(),
+    },
+  ],
   accounts: [],
   messages: []
 };
@@ -159,21 +170,12 @@ function createId() {
 }
 
 async function loadRemoteDatabase() {
-  if (supabase) {
-      const { data: users } = await supabase.table("users").select("*");
-      const { data: accounts } = await supabase.table("accounts").select("*");
-      return { users: users || [], accounts: accounts || [], messages: [] };
-  }
   const response = await fetch(REMOTE_DB_URL, { cache: "no-store" });
   if (!response.ok) throw new Error("Server DB unavailable");
   return await response.json();
 }
 
 async function saveRemoteDatabase(data) {
-  if (supabase) {
-      await supabase.table("accounts").upsert(data.accounts);
-      return;
-  }
   const response = await fetch(REMOTE_DB_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -356,11 +358,6 @@ function ownsAccount(account) {
 }
 
 async function deleteAccount(accountId) {
-  if (supabase) {
-      await supabase.table("accounts").delete().eq("id", accountId);
-      await syncRemoteDatabase();
-      return;
-  }
   database.accounts = database.accounts.filter((a) => a.id !== accountId);
   await saveRemoteDatabase(database);
   renderAccounts();
@@ -516,13 +513,8 @@ function stopChatPolling() {
 
 async function fetchMessages() {
     try {
-        if (supabase) {
-            const { data } = await supabase.table("messages").select("*").order("createdAt", { ascending: true });
-            allMessages = data || [];
-        } else {
-            const response = await fetch(`${MESSAGES_URL}?all=true`);
-            allMessages = await response.json();
-        }
+        const response = await fetch(`${MESSAGES_URL}?all=true`);
+        allMessages = await response.json();
         console.log("Fetched messages:", allMessages);
         renderChatList();
         renderMessages();
@@ -647,16 +639,14 @@ function renderMessages() {
 window.deleteMessage = async (id) => {
     if (!confirm("Удалить это сообщение?")) return;
     try {
-        if (supabase) {
-            await supabase.table("messages").delete().eq("id", id);
-        } else {
-            await fetch(`${API_BASE}/messages/delete`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ id })
-            });
+        const response = await fetch(`${API_BASE}/messages/delete`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id })
+        });
+        if (response.ok) {
+            fetchMessages();
         }
-        fetchMessages();
     } catch (e) {
         alert("Ошибка удаления");
     }
@@ -671,31 +661,17 @@ chatForm.addEventListener("submit", async (e) => {
     const text = chatInput.value.trim();
     if (!text) return;
     chatInput.value = "";
-    
-    const msgData = {
-        lotId: currentChatId,
-        userId: currentUser.id,
-        userName: currentUser.name,
-        text: text,
-        createdAt: new Date().toISOString()
-    };
-
     try {
-        if (supabase) {
-            await supabase.table("messages").insert([msgData]);
-            // Still call Render to trigger TG notification
-            fetch(MESSAGES_URL, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(msgData)
-            }).catch(e => console.log("TG Notification error", e));
-        } else {
-            await fetch(MESSAGES_URL, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(msgData)
-            });
-        }
+        await fetch(MESSAGES_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                lotId: currentChatId,
+                userId: currentUser.id,
+                userName: currentUser.name,
+                text: text
+            })
+        });
         fetchMessages();
     } catch (e) {
         alert("Ошибка отправки сообщения");
@@ -834,34 +810,17 @@ accountImage.addEventListener("change", async () => {
     imagePreview.classList.remove("hidden");
 });
 
-function showVerificationStep() {
-    userRegister.classList.add("hidden");
-    verificationStep.classList.remove("hidden");
-}
-
 userLogin.addEventListener("submit", async (e) => {
     e.preventDefault();
     const data = new FormData(userLogin);
     const login = normalizeLogin(data.get("user_login"));
     const hash = await hashText(data.get("user_key"));
     
-    const { data: user } = await supabase.table("users")
-        .select("*")
-        .eq("login", login)
-        .eq("passwordHash", hash)
-        .maybeSingle();
-
+    const user = database.users.find(u => normalizeLogin(u.login) === login && u.passwordHash === hash);
     if (user) {
         if (user.banned) {
             loginError.textContent = "Ваш аккаунт заблокирован.";
             loginError.classList.remove("hidden");
-            return;
-        }
-        if (user.status !== "active") {
-            loginError.textContent = "Пожалуйста, подтвердите регистрацию через бота.";
-            loginError.classList.remove("hidden");
-            currentPendingLogin = user.login;
-            showVerificationStep();
             return;
         }
         setUserSession(user);
@@ -885,55 +844,63 @@ userRegister.addEventListener("submit", async (e) => {
     const data = new FormData(userRegister);
     const login = normalizeLogin(data.get("register_login"));
     
-    // Check if exists
-    const { data: existing } = await supabase.table("users").select("id").eq("login", login).maybeSingle();
-    if (existing) {
+    if (database.users.some(u => normalizeLogin(u.login) === login)) {
         return registerError.classList.remove("hidden");
     }
     
-    const tgCode = Math.floor(100000 + Math.random() * 900000).toString();
     const userData = {
-        id: createId(),
         login,
         passwordHash: await hashText(data.get("register_key")),
         name: data.get("register_name").trim(),
-        telegram: data.get("register_tg").trim().replace(/^@/, '').toLowerCase(),
-        tgCode: tgCode,
-        status: "pending",
+        telegram: data.get("register_tg").trim(),
         role: "user",
         createdAt: new Date().toISOString()
     };
     
-    const { error } = await supabase.table("users").insert([userData]);
-    if (!error) {
-        currentPendingLogin = login;
-        showVerificationStep();
-    } else {
-        alert("Ошибка при регистрации");
+    try {
+        const response = await fetch(`${API_BASE}/auth/register-pending`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(userData)
+        });
+        const result = await response.json();
+        
+        if (result.success) {
+            currentPendingLogin = login;
+            showVerificationStep();
+        } else {
+            alert("Ошибка при регистрации");
+        }
+    } catch (err) {
+        alert("Ошибка сервера");
     }
 });
+
+function showVerificationStep() {
+    userRegister.classList.add("hidden");
+    verificationStep.classList.remove("hidden");
+}
 
 verificationForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     const code = verificationCodeInput.value.trim();
     if (!code || !currentPendingLogin) return;
     
-    const { data: user, error } = await supabase.table("users")
-        .select("*")
-        .eq("login", currentPendingLogin)
-        .eq("tgCode", code)
-        .maybeSingle();
+    try {
+        const response = await fetch(`${API_BASE}/auth/verify-code?login=${currentPendingLogin}&code=${code}`);
+        const result = await response.json();
         
-    if (user) {
-        // Activate user
-        await supabase.table("users").update({ status: "active", tgCode: null }).eq("id", user.id);
-        setUserSession({ ...user, status: "active" });
-        loginModal.close();
-        showSection(pendingSectionAfterLogin || "market");
-        currentPendingLogin = null;
-        verificationCodeInput.value = "";
-    } else {
-        alert("Неверный код. Пожалуйста, убедитесь, что вы получили его у бота.");
+        if (result.success) {
+            setUserSession(result.user);
+            loginModal.close();
+            showSection(pendingSectionAfterLogin || "market");
+            currentPendingLogin = null;
+            verificationCodeInput.value = "";
+        } else {
+            alert(result.message || "Неверный код");
+        }
+    } catch (e) {
+        alert("Ошибка подтверждения");
     }
 });
 
