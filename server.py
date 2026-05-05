@@ -19,13 +19,14 @@ class DatabaseHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
-        if self.path == '/api/database':
+        parsed_path = urllib.parse.urlparse(self.path).path
+        if parsed_path == '/api/database':
             self.serve_db()
-        elif self.path == '/api/messages':
+        elif parsed_path == '/api/messages':
             self.serve_messages()
         else:
             # Serve static files
-            path = self.path.lstrip('/')
+            path = parsed_path.lstrip('/')
             if not path:
                 path = 'index.html'
             if os.path.exists(path):
@@ -43,16 +44,17 @@ class DatabaseHandler(http.server.BaseHTTPRequestHandler):
                 self.send_error(404)
 
     def do_POST(self):
+        parsed_path = urllib.parse.urlparse(self.path).path
         content_length = int(self.headers['Content-Length'])
         post_data = self.rfile.read(content_length)
         data = json.loads(post_data)
 
-        if self.path == '/api/database':
+        if parsed_path == '/api/database':
             self.save_db(data)
             self.send_json_response({'success': True})
-        elif self.path == '/api/messages':
+        elif parsed_path == '/api/messages':
             self.add_message(data)
-        elif self.path == '/api/users/promote':
+        elif parsed_path == '/api/users/promote':
             self.promote_user(data)
         else:
             self.send_error(404)
