@@ -216,6 +216,31 @@
               </button>
             </div>
 
+            <div class="admin-panel" style="margin-top: 24px;">
+              <p class="eyebrow">Инструменты</p>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <form id="banForm" style="display: grid; gap: 12px;">
+                  <label style="font-size: 13px; font-weight: 700;">Блокировка (логин)</label>
+                  <div style="display: flex; gap: 8px;">
+                    <input type="text" name="ban_login" placeholder="Логин" required />
+                    <button class="button secondary" type="submit">Бан/Разбан</button>
+                  </div>
+                </form>
+                <form id="broadcastForm" style="display: grid; gap: 12px;">
+                  <label style="font-size: 13px; font-weight: 700;">Объявление в чат</label>
+                  <div style="display: flex; gap: 8px;">
+                    <input type="text" name="broadcast_text" placeholder="Текст сообщения" required />
+                    <button class="button primary" type="submit">Отправить</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+
+            <div id="staffManagement" class="admin-panel hidden" style="margin-top: 24px;">
+              <p class="eyebrow">Список администраторов</p>
+              <div id="staffList" style="display: grid; gap: 8px; margin-top: 12px;"></div>
+            </div>
+
             <div class="admin-table" id="adminAccounts"></div>
             <pre class="db-output hidden" id="dbOutput"></pre>
           </div>

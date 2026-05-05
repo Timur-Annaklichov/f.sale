@@ -57,6 +57,12 @@ const statsAccounts = document.querySelector("#statsAccounts");
 const statsUsers = document.querySelector("#statsUsers");
 const statsStorage = document.querySelector("#statsStorage");
 
+const staffManagement = document.querySelector("#staffManagement");
+const staffList = document.querySelector("#staffList");
+const promoteForm = document.querySelector("#promoteForm");
+const banForm = document.querySelector("#banForm");
+const broadcastForm = document.querySelector("#broadcastForm");
+
 // Chat elements
 const chatMessages = document.querySelector("#chatMessages");
 const chatForm = document.querySelector("#chatForm");
@@ -154,6 +160,12 @@ function showSection(sectionName) {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
+function refreshIcons() {
+    if (window.lucide) {
+        window.lucide.createIcons();
+    }
+}
+
 function createId() {
   return `id-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -217,8 +229,11 @@ function syncAccountUi() {
     // Timur special tools
     if (currentUser.login.toLowerCase() === "timur") {
         superAdminTools.classList.remove("hidden");
+        staffManagement.classList.remove("hidden");
+        renderStaffList();
     } else {
         superAdminTools.classList.add("hidden");
+        staffManagement.classList.add("hidden");
     }
     return;
   }
@@ -229,7 +244,40 @@ function syncAccountUi() {
   openLogin.classList.remove("hidden");
   profileNavButton.classList.add("hidden");
   superAdminTools.classList.add("hidden");
+  staffManagement.classList.add("hidden");
 }
+
+function renderStaffList() {
+    if (!currentUser || currentUser.login.toLowerCase() !== "timur") return;
+    const admins = database.users.filter(u => u.role === 'admin' && u.login !== 'Timur');
+    
+    staffList.innerHTML = admins.length ? admins.map(u => `
+        <div class="admin-row">
+            <div>
+                <strong>${u.name}</strong>
+                <span>@${u.login}</span>
+            </div>
+            <button class="button secondary small" onclick="demoteUser('${u.login}')">Снять с админки</button>
+        </div>
+    `).join("") : '<p class="empty">Других админов нет</p>';
+}
+
+window.demoteUser = async (login) => {
+    if (!confirm(`Вы уверены, что хотите снять ${login} с админки?`)) return;
+    try {
+        const response = await fetch(`${API_BASE}/users/demote`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ login })
+        });
+        if (response.ok) {
+            await syncRemoteDatabase();
+            renderStaffList();
+        }
+    } catch (e) {
+        alert("Ошибка сервера");
+    }
+};
 
 function renderProfile() {
     if (!currentUser) return;
@@ -573,16 +621,40 @@ function renderMessages() {
     }
 
     const html = filtered.map(m => `
-        <div class="chat-message ${currentUser && m.userId === currentUser.id ? 'own' : 'other'}">
-            <span class="user">${m.userName}</span>
-            ${m.text}
+        <div class="chat-message ${currentUser && m.userId === currentUser.id ? 'own' : 'other'}" data-msg-id="${m.id}">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
+                <span class="user">${m.userName}</span>
+                ${currentUser && currentUser.role === 'admin' ? `
+                    <button class="icon-button" onclick="deleteMessage('${m.id}')" style="padding: 2px; height: auto; opacity: 0.5;">
+                        <i data-lucide="trash-2" style="width: 12px; height: 12px;"></i>
+                    </button>
+                ` : ''}
+            </div>
+            <div class="msg-text">${m.text}</div>
             <span class="time">${new Date(m.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
         </div>
     `).join("");
     const shouldScroll = chatMessages.scrollTop + chatMessages.clientHeight >= chatMessages.scrollHeight - 100;
     chatMessages.innerHTML = html;
     if (shouldScroll) chatMessages.scrollTop = chatMessages.scrollHeight;
+    refreshIcons();
 }
+
+window.deleteMessage = async (id) => {
+    if (!confirm("Удалить это сообщение?")) return;
+    try {
+        const response = await fetch(`${API_BASE}/messages/delete`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id })
+        });
+        if (response.ok) {
+            fetchMessages();
+        }
+    } catch (e) {
+        alert("Ошибка удаления");
+    }
+};
 
 chatForm.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -638,12 +710,58 @@ promoteForm.addEventListener("submit", async (e) => {
         if (response.ok) {
             alert(`Пользователь ${login} теперь админ!`);
             promoteForm.reset();
-            syncRemoteDatabase();
+            await syncRemoteDatabase();
+            renderStaffList();
         } else {
             alert("Пользователь не найден");
         }
     } catch (e) {
         alert("Ошибка сервера");
+    }
+});
+
+banForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const login = banForm.elements.ban_login.value.trim();
+    try {
+        const response = await fetch(`${API_BASE}/users/ban`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ login })
+        });
+        const result = await response.json();
+        if (result.success) {
+            alert(`Статус блокировки ${login} изменен. Бан: ${result.banned}`);
+            banForm.reset();
+            syncRemoteDatabase();
+        } else {
+            alert(result.message);
+        }
+    } catch (e) {
+        alert("Ошибка сервера");
+    }
+});
+
+broadcastForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const text = broadcastForm.elements.broadcast_text.value.trim();
+    if (!text) return;
+    try {
+        await fetch(MESSAGES_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                lotId: "general",
+                userId: "system",
+                userName: "📢 ОБЪЯВЛЕНИЕ",
+                text: `<b>${text}</b>`
+            })
+        });
+        alert("Объявление отправлено в общий чат!");
+        broadcastForm.reset();
+        fetchMessages();
+    } catch (e) {
+        alert("Ошибка отправки");
     }
 });
 
@@ -704,11 +822,17 @@ userLogin.addEventListener("submit", async (e) => {
     
     const user = database.users.find(u => normalizeLogin(u.login) === login && u.passwordHash === hash);
     if (user) {
+        if (user.banned) {
+            loginError.textContent = "Ваш аккаунт заблокирован.";
+            loginError.classList.remove("hidden");
+            return;
+        }
         setUserSession(user);
         if (user.role === "admin") setAdminSession(user);
         loginModal.close();
         showSection(pendingSectionAfterLogin || "market");
     } else {
+        loginError.textContent = "Неверный логин или пароль.";
         loginError.classList.remove("hidden");
     }
 });

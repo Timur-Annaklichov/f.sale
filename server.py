@@ -142,6 +142,30 @@ class DatabaseHandler(http.server.BaseHTTPRequestHandler):
             telegram = data.get('telegram')
             pending_verifications[login] = {'login': login, 'telegram': telegram}
             self.send_json_response({'success': True})
+        elif parsed_path == '/api/users/demote':
+            db = self.read_db()
+            user = next((u for u in db['users'] if u['login'] == data.get('login')), None)
+            if user:
+                user['role'] = 'user'
+                self.save_db(db)
+                self.send_json_response({'success': True})
+            else:
+                self.send_json_response({'success': False, 'message': 'User not found'})
+        elif parsed_path == '/api/users/ban':
+            db = self.read_db()
+            user = next((u for u in db['users'] if u['login'] == data.get('login')), None)
+            if user:
+                user['banned'] = not user.get('banned', False)
+                self.save_db(db)
+                self.send_json_response({'success': True, 'banned': user['banned']})
+            else:
+                self.send_json_response({'success': False, 'message': 'User not found'})
+        elif parsed_path == '/api/messages/delete':
+            db = self.read_db()
+            msg_id = data.get('id')
+            db['messages'] = [m for m in db['messages'] if m.get('id') != msg_id]
+            self.save_db(db)
+            self.send_json_response({'success': True})
         else:
             self.send_error(404)
 
