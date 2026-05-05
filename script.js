@@ -423,21 +423,25 @@ function renderChatList() {
     // Private chats (only if logged in)
     if (currentUser) {
         allMessages.forEach(m => {
-            if (m.lotId && m.lotId.startsWith("private_")) {
-                const parts = m.lotId.split("_");
-                if (parts.length === 3) {
-                    const [, id1, id2] = parts;
-                    if (id1 === currentUser.id || id2 === currentUser.id) {
-                        const otherId = id1 === currentUser.id ? id2 : id1;
-                        const otherUser = database.users.find(u => u.id === otherId);
-                        const otherName = otherUser ? otherUser.name : "Пользователь";
-                        if (!userChats.has(m.lotId)) {
-                            userChats.set(m.lotId, { id: m.lotId, name: otherName, type: "Личный чат", lastMsg: m.text });
-                        } else {
-                            userChats.get(m.lotId).lastMsg = m.text;
+            try {
+                if (m && typeof m.lotId === 'string' && m.lotId.startsWith("private_")) {
+                    const parts = m.lotId.split("_");
+                    if (parts.length === 3) {
+                        const [, id1, id2] = parts;
+                        if (id1 === currentUser.id || id2 === currentUser.id) {
+                            const otherId = id1 === currentUser.id ? id2 : id1;
+                            const otherUser = database.users.find(u => u.id === otherId);
+                            const otherName = otherUser ? otherUser.name : "Пользователь";
+                            if (!userChats.has(m.lotId)) {
+                                userChats.set(m.lotId, { id: m.lotId, name: otherName, type: "Личный чат", lastMsg: m.text || "" });
+                            } else {
+                                userChats.get(m.lotId).lastMsg = m.text || "";
+                            }
                         }
                     }
                 }
+            } catch (err) {
+                console.error("Error processing message for chat list", m, err);
             }
         });
     }
