@@ -5,30 +5,13 @@ const USER_SESSION_KEY = "fsale_user_session_v1";
 const ACTIVE_SECTION_KEY = "fsale_active_section";
 const OWNED_ACCOUNTS_KEY = "fsale_owned_accounts_v1";
 
-const API_BASE = "https://f-sale-tide.onrender.com/api"; // UPDATE THIS TO YOUR RENDER URL
 const SUPABASE_URL = ""; // YOUR SUPABASE URL
 const SUPABASE_KEY = ""; // YOUR SUPABASE ANON KEY
 
-let supabase = null;
-if (SUPABASE_URL && SUPABASE_KEY) {
-    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-}
-
-const REMOTE_DB_URL = `${API_BASE}/database`;
-const MESSAGES_URL = `${API_BASE}/messages`;
-const PROMOTE_URL = `${API_BASE}/users/promote`;
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const defaultDatabase = {
-  users: [
-    {
-      id: "owner-timur",
-      login: "Timur",
-      passwordHash: "386d5796526ca17bd7dfea3799105e50cbdd300eae4f4b9a798127dc9903bac5",
-      name: "Timur",
-      role: "admin",
-      createdAt: new Date().toISOString(),
-    },
-  ],
+  users: [],
   accounts: [],
   messages: []
 };
@@ -851,17 +834,34 @@ accountImage.addEventListener("change", async () => {
     imagePreview.classList.remove("hidden");
 });
 
+function showVerificationStep() {
+    userRegister.classList.add("hidden");
+    verificationStep.classList.remove("hidden");
+}
+
 userLogin.addEventListener("submit", async (e) => {
     e.preventDefault();
     const data = new FormData(userLogin);
     const login = normalizeLogin(data.get("user_login"));
     const hash = await hashText(data.get("user_key"));
     
-    const user = database.users.find(u => normalizeLogin(u.login) === login && u.passwordHash === hash);
+    const { data: user } = await supabase.table("users")
+        .select("*")
+        .eq("login", login)
+        .eq("passwordHash", hash)
+        .maybeSingle();
+
     if (user) {
         if (user.banned) {
             loginError.textContent = "Ваш аккаунт заблокирован.";
             loginError.classList.remove("hidden");
+            return;
+        }
+        if (user.status !== "active") {
+            loginError.textContent = "Пожалуйста, подтвердите регистрацию через бота.";
+            loginError.classList.remove("hidden");
+            currentPendingLogin = user.login;
+            showVerificationStep();
             return;
         }
         setUserSession(user);
@@ -885,63 +885,55 @@ userRegister.addEventListener("submit", async (e) => {
     const data = new FormData(userRegister);
     const login = normalizeLogin(data.get("register_login"));
     
-    if (database.users.some(u => normalizeLogin(u.login) === login)) {
+    // Check if exists
+    const { data: existing } = await supabase.table("users").select("id").eq("login", login).maybeSingle();
+    if (existing) {
         return registerError.classList.remove("hidden");
     }
     
+    const tgCode = Math.floor(100000 + Math.random() * 900000).toString();
     const userData = {
+        id: createId(),
         login,
         passwordHash: await hashText(data.get("register_key")),
         name: data.get("register_name").trim(),
-        telegram: data.get("register_tg").trim(),
+        telegram: data.get("register_tg").trim().replace(/^@/, '').toLowerCase(),
+        tgCode: tgCode,
+        status: "pending",
         role: "user",
         createdAt: new Date().toISOString()
     };
     
-    try {
-        const response = await fetch(`${API_BASE}/auth/register-pending`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(userData)
-        });
-        const result = await response.json();
-        
-        if (result.success) {
-            currentPendingLogin = login;
-            showVerificationStep();
-        } else {
-            alert("Ошибка при регистрации");
-        }
-    } catch (err) {
-        alert("Ошибка сервера");
+    const { error } = await supabase.table("users").insert([userData]);
+    if (!error) {
+        currentPendingLogin = login;
+        showVerificationStep();
+    } else {
+        alert("Ошибка при регистрации");
     }
 });
-
-function showVerificationStep() {
-    userRegister.classList.add("hidden");
-    verificationStep.classList.remove("hidden");
-}
 
 verificationForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     const code = verificationCodeInput.value.trim();
     if (!code || !currentPendingLogin) return;
     
-    try {
-        const response = await fetch(`${API_BASE}/auth/verify-code?login=${currentPendingLogin}&code=${code}`);
-        const result = await response.json();
+    const { data: user, error } = await supabase.table("users")
+        .select("*")
+        .eq("login", currentPendingLogin)
+        .eq("tgCode", code)
+        .maybeSingle();
         
-        if (result.success) {
-            setUserSession(result.user);
-            loginModal.close();
-            showSection(pendingSectionAfterLogin || "market");
-            currentPendingLogin = null;
-            verificationCodeInput.value = "";
-        } else {
-            alert(result.message || "Неверный код");
-        }
-    } catch (e) {
-        alert("Ошибка подтверждения");
+    if (user) {
+        // Activate user
+        await supabase.table("users").update({ status: "active", tgCode: null }).eq("id", user.id);
+        setUserSession({ ...user, status: "active" });
+        loginModal.close();
+        showSection(pendingSectionAfterLogin || "market");
+        currentPendingLogin = null;
+        verificationCodeInput.value = "";
+    } else {
+        alert("Неверный код. Пожалуйста, убедитесь, что вы получили его у бота.");
     }
 });
 
