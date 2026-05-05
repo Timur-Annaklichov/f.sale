@@ -181,10 +181,15 @@ function refreshIcons() {
     if (window.lucide) {
         window.lucide.createIcons();
     } else {
-        // Retry once after 100ms if lucide is still loading
-        setTimeout(() => {
-            if (window.lucide) window.lucide.createIcons();
-        }, 1000);
+        // Retry a few times if lucide is still loading
+        let retries = 0;
+        const interval = setInterval(() => {
+            if (window.lucide) {
+                window.lucide.createIcons();
+                clearInterval(interval);
+            }
+            if (++retries > 10) clearInterval(interval);
+        }, 300);
     }
 }
 
