@@ -479,7 +479,10 @@ function renderMessages() {
 
 chatForm.addEventListener("submit", async (e) => {
     e.preventDefault();
-    if (!currentUser) return showSection("home");
+    if (!currentUser) {
+        pendingSectionAfterLogin = "chat";
+        return openLoginModal("register");
+    }
     const text = chatInput.value.trim();
     if (!text) return;
     chatInput.value = "";
@@ -501,7 +504,10 @@ chatForm.addEventListener("submit", async (e) => {
 });
 
 window.openPrivateChat = (sellerId) => {
-    if (!currentUser) return openLoginModal("register");
+    if (!currentUser) {
+        pendingSectionAfterLogin = "chat";
+        return openLoginModal("register");
+    }
     if (sellerId === currentUser.id) return alert("Это ваш товар!");
     const ids = [currentUser.id, sellerId].sort();
     currentChatId = `private_${ids[0]}_${ids[1]}`;
@@ -599,29 +605,67 @@ userLogin.addEventListener("submit", async (e) => {
     }
 });
 
+// Auth & Verification elements
+const verificationStep = document.querySelector("#verificationStep");
+const verificationCodeDisplay = document.querySelector("#verificationCodeDisplay");
+let verificationInterval = null;
+
 userRegister.addEventListener("submit", async (e) => {
     e.preventDefault();
     const data = new FormData(userRegister);
     const login = normalizeLogin(data.get("register_login"));
+    
     if (database.users.some(u => normalizeLogin(u.login) === login)) {
         return registerError.classList.remove("hidden");
     }
     
-    const newUser = {
-        id: createId(),
+    const userData = {
         login,
         passwordHash: await hashText(data.get("register_key")),
         name: data.get("register_name").trim(),
+        telegram: data.get("register_tg").trim(),
         role: "user",
         createdAt: new Date().toISOString()
     };
     
-    database.users.push(newUser);
-    await saveRemoteDatabase(database);
-    setUserSession(newUser);
-    loginModal.close();
-    showSection("market");
+    try {
+        const response = await fetch(`${API_BASE}/auth/register-pending`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(userData)
+        });
+        const result = await response.json();
+        
+        if (result.success) {
+            showVerificationStep(result.code);
+        } else {
+            alert("Ошибка при регистрации");
+        }
+    } catch (err) {
+        alert("Ошибка сервера");
+    }
 });
+
+function showVerificationStep(code) {
+    userRegister.classList.add("hidden");
+    verificationStep.classList.remove("hidden");
+    verificationCodeDisplay.textContent = code;
+    
+    // Start polling
+    if (verificationInterval) clearInterval(verificationInterval);
+    verificationInterval = setInterval(async () => {
+        try {
+            const response = await fetch(`${API_BASE}/auth/check-status?code=${code}`);
+            const result = await response.json();
+            if (result.success) {
+                clearInterval(verificationInterval);
+                setUserSession(result.user);
+                loginModal.close();
+                showSection(pendingSectionAfterLogin || "market");
+            }
+        } catch (e) {}
+    }, 3000);
+}
 
 logoutUser.addEventListener("click", () => {
     clearUserSession();
@@ -653,6 +697,8 @@ function openLoginModal(mode = "login") {
 function setAuthMode(mode) {
     userLogin.classList.toggle("hidden", mode !== "login");
     userRegister.classList.toggle("hidden", mode !== "register");
+    verificationStep.classList.add("hidden");
+    if (verificationInterval) clearInterval(verificationInterval);
 }
 
 
