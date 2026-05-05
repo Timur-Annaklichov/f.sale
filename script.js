@@ -86,6 +86,10 @@ const profDate = document.querySelector("#profDate");
 
 let allMessages = [];
 
+const LAST_SEEN_KEY = "tide_last_seen_msg";
+const chatBadge = document.querySelector("#chatBadge");
+let lastSeenMsgIds = JSON.parse(localStorage.getItem(LAST_SEEN_KEY) || "{}");
+
 async function init() {
     try {
         await syncRemoteDatabase();
@@ -234,6 +238,12 @@ function renderProfile() {
     profRole.textContent = currentUser.role === 'admin' ? 'Администратор' : 'Пользователь';
     profRole.className = `value badge ${currentUser.role}`;
     profTg.textContent = currentUser.telegram || 'Не указан';
+    
+    const linkBtn = document.querySelector("#linkTgBtn");
+    if (linkBtn) {
+        linkBtn.textContent = currentUser.telegram ? "Изменить" : "Привязать";
+    }
+
     profDate.textContent = new Date(currentUser.createdAt).toLocaleDateString('ru-RU', {
         day: 'numeric',
         month: 'long',
@@ -242,6 +252,28 @@ function renderProfile() {
         minute: '2-digit'
     });
 }
+
+window.startProfileLinking = async () => {
+    const tg = prompt("Введите ваш Telegram никнейм (без @):", currentUser.telegram || "");
+    if (!tg) return;
+    
+    try {
+        const response = await fetch(`${API_BASE}/auth/request-link`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ login: currentUser.login, telegram: tg })
+        });
+        const result = await response.json();
+        if (result.success) {
+            currentPendingLogin = currentUser.login;
+            setAuthMode("register"); // This hides other forms
+            loginModal.showModal();
+            showVerificationStep();
+        }
+    } catch (e) {
+        alert("Ошибка сервера");
+    }
+};
 
 function restoreAdminSession() {
   const saved = localStorage.getItem(ADMIN_SESSION_KEY);
@@ -442,9 +474,30 @@ async function fetchMessages() {
         console.log("Fetched messages:", allMessages);
         renderChatList();
         renderMessages();
+        updateChatBadge();
     } catch (e) {
         console.error("Chat fetch error", e);
     }
+}
+
+function updateChatBadge() {
+    if (!currentUser) return;
+    let unreadCount = 0;
+    
+    allMessages.forEach(m => {
+        if (m.lotId && m.lotId.startsWith("private_")) {
+            const parts = m.lotId.split("_");
+            if (parts.includes(currentUser.id)) {
+                const lastSeenId = lastSeenMsgIds[m.lotId] || "0";
+                if (m.id > lastSeenId && m.userId !== currentUser.id) {
+                    unreadCount++;
+                }
+            }
+        }
+    });
+    
+    chatBadge.textContent = unreadCount;
+    chatBadge.classList.toggle("hidden", unreadCount === 0);
 }
 
 function renderChatList() {
@@ -508,6 +561,17 @@ window.goBackToChatList = () => {
 function renderMessages() {
     const filtered = allMessages.filter(m => m.lotId === currentChatId);
     console.log(`Rendering ${filtered.length} messages for chat ${currentChatId}`);
+    
+    // Mark as seen
+    if (filtered.length > 0 && currentChatId.startsWith("private_")) {
+        const latestId = filtered[filtered.length - 1].id;
+        if (!lastSeenMsgIds[currentChatId] || latestId > lastSeenMsgIds[currentChatId]) {
+            lastSeenMsgIds[currentChatId] = latestId;
+            localStorage.setItem(LAST_SEEN_KEY, JSON.stringify(lastSeenMsgIds));
+            updateChatBadge();
+        }
+    }
+
     const html = filtered.map(m => `
         <div class="chat-message ${currentUser && m.userId === currentUser.id ? 'own' : 'other'}">
             <span class="user">${m.userName}</span>
@@ -555,9 +619,10 @@ window.openPrivateChat = (sellerId) => {
     const ids = [currentUser.id, sellerId].sort();
     currentChatId = `private_${ids[0]}_${ids[1]}`;
     const seller = database.users.find(u => u.id === sellerId);
-    switchToChat(currentChatId, seller ? seller.name : "Продавец", "Личный чат");
+    
     modal.close();
     showSection("chat");
+    switchToChat(currentChatId, seller ? seller.name : "Продавец", "Личный чат");
 };
 
 // Admin promotion

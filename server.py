@@ -86,7 +86,14 @@ class DatabaseHandler(http.server.BaseHTTPRequestHandler):
                     pending_verifications.pop(login)
                     user_data.pop('tgCode', None)
                     db = self.read_db()
-                    db['users'].append(user_data)
+                    # Check if it's an existing user or new
+                    existing = next((u for u in db['users'] if u['login'] == login), None)
+                    if existing:
+                        existing['chatId'] = user_data['chatId']
+                        existing['telegram'] = user_data['telegram']
+                        user_data = existing
+                    else:
+                        db['users'].append(user_data)
                     self.save_db(db)
                     self.send_json_response({'success': True, 'user': user_data})
                 else:
@@ -128,6 +135,12 @@ class DatabaseHandler(http.server.BaseHTTPRequestHandler):
         elif parsed_path == '/api/auth/register-pending':
             data['id'] = str(int(datetime.now().timestamp() * 1000))
             pending_verifications[data['login']] = data
+            self.send_json_response({'success': True})
+        elif parsed_path == '/api/auth/request-link':
+            # Used for existing users to bind TG
+            login = data.get('login')
+            telegram = data.get('telegram')
+            pending_verifications[login] = {'login': login, 'telegram': telegram}
             self.send_json_response({'success': True})
         else:
             self.send_error(404)

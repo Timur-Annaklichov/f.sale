@@ -24,7 +24,9 @@
         <button class="nav-button active" type="button" data-section="home">Главная</button>
         <button class="nav-button" type="button" data-section="market">Маркет</button>
         <button class="nav-button" type="button" data-section="sell">Продать</button>
-        <button class="nav-button" type="button" data-section="chat">Чат</button>
+        <button class="nav-button" type="button" data-section="chat">
+          Чат <span class="badge hidden" id="chatBadge">0</span>
+        </button>
         <button class="nav-button hidden" id="profileNavButton" type="button" data-section="profile">
           Профиль
         </button>
@@ -241,7 +243,12 @@
             </div>
             <div class="info-group">
               <span class="label">Telegram</span>
-              <span class="value" id="profTg">---</span>
+              <div style="text-align: right;">
+                <span class="value" id="profTg">---</span>
+                <button class="button secondary small" id="linkTgBtn" onclick="startProfileLinking()" style="margin-left: 8px; padding: 4px 8px; font-size: 11px;">
+                  Привязать
+                </button>
+              </div>
             </div>
             <div class="info-group">
               <span class="label">Дата регистрации</span>
