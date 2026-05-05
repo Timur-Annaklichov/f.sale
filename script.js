@@ -872,7 +872,6 @@ userLogin.addEventListener("submit", async (e) => {
 // Auth & Verification elements
 const verificationStep = document.querySelector("#verificationStep");
 const verificationForm = document.querySelector("#verificationForm");
-const verificationCodeInput = document.querySelector("#verificationCodeInput");
 let currentPendingLogin = null;
 let isRecoveryMode = false;
 
@@ -1074,7 +1073,6 @@ function setAuthMode(mode) {
     document.querySelector("#recoveryPassLabel").classList.add("hidden");
     currentPendingLogin = null;
     isRecoveryMode = false;
-    verificationCodeInput.value = "";
 }
 
 
