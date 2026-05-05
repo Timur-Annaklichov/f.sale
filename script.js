@@ -73,7 +73,6 @@ const chatList = document.querySelector("#chatList");
 
 // Admin tools
 const superAdminTools = document.querySelector("#superAdminTools");
-const promoteForm = document.querySelector("#promoteForm");
 
 let currentFilter = "all";
 let database = defaultDatabase;
@@ -499,9 +498,6 @@ function openBuyModal(id) {
   refreshIcons();
 }
 
-function refreshIcons() {
-  if (window.lucide) window.lucide.createIcons();
-}
 
 // Chat logic
 async function startChatPolling() {
