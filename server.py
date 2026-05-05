@@ -6,8 +6,23 @@ import time
 import urllib.parse
 import urllib.request
 from datetime import datetime
+import os
 
-PORT = int(os.environ.get('PORT', 3000))
+# Supabase Setup (Optional Persistence)
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+supabase = None
+
+if SUPABASE_URL and SUPABASE_KEY:
+    try:
+        from supabase import create_client
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        print("Connected to Supabase")
+    except ImportError:
+        print("Supabase library not installed. Falling back to local DB.")
+    except Exception as e:
+        print(f"Supabase connection error: {e}")
+
 DB_FILE = 'db.json'
 TG_TOKEN = '8483206778:AAGzc0fy8JWIP5uZ24EK2Zv7iiSmM_ETD3M'
 
@@ -61,6 +76,17 @@ def tg_bot_thread():
 
 threading.Thread(target=tg_bot_thread, daemon=True).start()
 
+def get_supabase_db():
+    if not supabase: return None
+    try:
+        users = supabase.table("users").select("*").execute().data
+        accounts = supabase.table("accounts").select("*").execute().data
+        messages = supabase.table("messages").select("*").execute().data
+        return {"users": users, "accounts": accounts, "messages": messages}
+    except Exception as e:
+        print(f"Supabase fetch error: {e}")
+        return None
+
 class DatabaseHandler(http.server.BaseHTTPRequestHandler):
     def end_headers(self):
         self.send_header('Access-Control-Allow-Origin', '*')
@@ -73,9 +99,9 @@ class DatabaseHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
-        parsed = urllib.parse.urlparse(self.path)
-        parsed_path = parsed.path
-        params = urllib.parse.parse_qs(parsed.query)
+        parsed_path = urllib.parse.urlparse(self.path).path
+        query = urllib.parse.urlparse(self.path).query
+        params = urllib.parse.parse_qs(query)
 
         if parsed_path == '/api/database':
             self.serve_db()
@@ -189,10 +215,6 @@ class DatabaseHandler(http.server.BaseHTTPRequestHandler):
             messages = [m for m in db.get('messages', []) if m.get('lotId', 'general') == lot_id]
         self.send_json_response(messages)
 
-    def save_db(self, data):
-        with open(DB_FILE, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-
     def add_message(self, msg_data):
         db = self.read_db()
         new_msg = {
@@ -233,10 +255,32 @@ class DatabaseHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
 
     def read_db(self):
+        remote = get_supabase_db()
+        if remote: return remote
+        
         if not os.path.exists(DB_FILE):
             return {'users': [], 'accounts': [], 'messages': []}
         with open(DB_FILE, 'r', encoding='utf-8') as f:
             return json.load(f)
+
+    def save_db(self, data):
+        # Save locally
+        with open(DB_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            
+        # Save to Supabase if active
+        if supabase:
+            try:
+                if data.get('users'):
+                    supabase.table("users").upsert(data['users']).execute()
+                if data.get('accounts'):
+                    supabase.table("accounts").upsert(data['accounts']).execute()
+                if data.get('messages'):
+                    # Only upsert new messages to avoid slow large batch upserts
+                    # For simplicity in this JSON-to-SQL migration, we'll upsert all for now
+                    supabase.table("messages").upsert(data['messages']).execute()
+            except Exception as e:
+                print(f"Supabase save error: {e}")
 
     def send_json_response(self, data):
         self.send_response(200)

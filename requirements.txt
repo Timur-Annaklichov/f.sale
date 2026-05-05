@@ -1,2 +1,2 @@
-# No external dependencies required for the current server.py
-# If you decide to use Flask or FastAPI later, add them here.
+supabase
+postgrest
