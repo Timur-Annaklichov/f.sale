@@ -340,8 +340,8 @@ window.startProfileLinking = async () => {
         });
         const result = await response.json();
         if (result.success) {
-            currentPendingLogin = currentUser.login;
             setAuthMode("register"); // This hides other forms
+            currentPendingLogin = currentUser.login;
             loginModal.showModal();
             showVerificationStep();
         }
@@ -1025,17 +1025,13 @@ themeToggle.addEventListener("click", () => {
     localStorage.setItem(THEME_KEY, isDark ? "dark" : "light");
     
     // Switch icon
-    const icon = themeToggle.querySelector("i");
-    if (icon) {
-        icon.setAttribute("data-lucide", isDark ? "sun" : "moon");
-        refreshIcons();
-    }
+    themeToggle.innerHTML = `<i data-lucide="${isDark ? 'sun' : 'moon'}"></i>`;
+    refreshIcons();
 });
 
 if (localStorage.getItem(THEME_KEY) === "dark") {
     document.body.classList.add("dark");
-    const icon = themeToggle.querySelector("i");
-    if (icon) icon.setAttribute("data-lucide", "sun");
+    themeToggle.innerHTML = `<i data-lucide="sun"></i>`;
 }
 
 closeLogin.addEventListener("click", () => loginModal.close());
