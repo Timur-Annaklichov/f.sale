@@ -607,8 +607,9 @@ userLogin.addEventListener("submit", async (e) => {
 
 // Auth & Verification elements
 const verificationStep = document.querySelector("#verificationStep");
-const verificationCodeDisplay = document.querySelector("#verificationCodeDisplay");
-let verificationInterval = null;
+const verificationForm = document.querySelector("#verificationForm");
+const verificationCodeInput = document.querySelector("#verificationCodeInput");
+let currentPendingLogin = null;
 
 userRegister.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -637,7 +638,8 @@ userRegister.addEventListener("submit", async (e) => {
         const result = await response.json();
         
         if (result.success) {
-            showVerificationStep(result.code);
+            currentPendingLogin = login;
+            showVerificationStep();
         } else {
             alert("Ошибка при регистрации");
         }
@@ -646,26 +648,33 @@ userRegister.addEventListener("submit", async (e) => {
     }
 });
 
-function showVerificationStep(code) {
+function showVerificationStep() {
     userRegister.classList.add("hidden");
     verificationStep.classList.remove("hidden");
-    verificationCodeDisplay.textContent = code;
-    
-    // Start polling
-    if (verificationInterval) clearInterval(verificationInterval);
-    verificationInterval = setInterval(async () => {
-        try {
-            const response = await fetch(`${API_BASE}/auth/check-status?code=${code}`);
-            const result = await response.json();
-            if (result.success) {
-                clearInterval(verificationInterval);
-                setUserSession(result.user);
-                loginModal.close();
-                showSection(pendingSectionAfterLogin || "market");
-            }
-        } catch (e) {}
-    }, 3000);
 }
+
+verificationForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const code = verificationCodeInput.value.trim();
+    if (!code || !currentPendingLogin) return;
+    
+    try {
+        const response = await fetch(`${API_BASE}/auth/verify-code?login=${currentPendingLogin}&code=${code}`);
+        const result = await response.json();
+        
+        if (result.success) {
+            setUserSession(result.user);
+            loginModal.close();
+            showSection(pendingSectionAfterLogin || "market");
+            currentPendingLogin = null;
+            verificationCodeInput.value = "";
+        } else {
+            alert(result.message || "Неверный код");
+        }
+    } catch (e) {
+        alert("Ошибка подтверждения");
+    }
+});
 
 logoutUser.addEventListener("click", () => {
     clearUserSession();
@@ -698,7 +707,8 @@ function setAuthMode(mode) {
     userLogin.classList.toggle("hidden", mode !== "login");
     userRegister.classList.toggle("hidden", mode !== "register");
     verificationStep.classList.add("hidden");
-    if (verificationInterval) clearInterval(verificationInterval);
+    currentPendingLogin = null;
+    verificationCodeInput.value = "";
 }
 
 

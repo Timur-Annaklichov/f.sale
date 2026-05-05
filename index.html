@@ -297,21 +297,22 @@
 
       <div class="auth-form hidden" id="verificationStep">
         <p class="eyebrow">Verification</p>
-        <h3>Подтвердите Telegram</h3>
+        <h3>Проверьте Telegram</h3>
         <p style="margin-bottom: 20px; font-size: 14px; opacity: 0.8;">
-          Пожалуйста, перейдите в нашего бота и отправьте ему этот код:
+          Напишите боту <b>/start</b>. Он пришлет вам код подтверждения.
         </p>
-        <div class="code-box" id="verificationCodeDisplay" style="background: var(--panel-2); padding: 15px; border-radius: var(--radius); text-align: center; font-size: 24px; font-weight: 800; letter-spacing: 4px; margin-bottom: 20px; border: 1px dashed var(--line);">
-          ------
-        </div>
         <a href="https://t.me/tide_pvp_bot" target="_blank" class="button secondary wide" style="margin-bottom: 20px;">
           <i data-lucide="external-link"></i>
           Открыть бота @tide_pvp_bot
         </a>
-        <div style="display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 12px; color: var(--muted);">
-          <div class="spinner" style="width: 12px; height: 12px; border: 2px solid var(--muted); border-top-color: var(--text); border-radius: 50%; animation: spin 1s linear infinite;"></div>
-          Ожидание подтверждения...
-        </div>
+        
+        <form id="verificationForm">
+          <label>
+            Код из Telegram
+            <input type="text" id="verificationCodeInput" placeholder="123456" maxlength="6" style="text-align: center; letter-spacing: 4px; font-weight: bold;" required />
+          </label>
+          <button class="button primary wide" type="submit">Подтвердить</button>
+        </form>
       </div>
     </dialog>
 

@@ -24,6 +24,7 @@ def send_tg_message(chat_id, text):
 
 def tg_bot_thread():
     offset = 0
+    import random
     while True:
         try:
             url = f"https://api.telegram.org/bot{TG_TOKEN}/getUpdates?offset={offset}&timeout=30"
@@ -34,14 +35,22 @@ def tg_bot_thread():
                     msg = update.get('message', {})
                     text = msg.get('text', '').strip()
                     chat_id = msg.get('chat', {}).get('id')
+                    username = msg.get('from', {}).get('username', '').lower()
                     
-                    if text in pending_verifications:
-                        user_data = pending_verifications[text]
-                        user_data['chatId'] = chat_id
-                        user_data['verified'] = True
-                        send_tg_message(chat_id, "✅ Аккаунт успешно подтвержден! Теперь вы можете пользоваться сайтом.")
-                    elif text == "/start":
-                        send_tg_message(chat_id, "Привет! Пожалуйста, введите код верификации с сайта f.sale")
+                    if text == "/start":
+                        # Check if this telegram user has a pending registration
+                        found = False
+                        for code_key, user_data in pending_verifications.items():
+                            reg_tg = user_data.get('telegram', '').lstrip('@').lower()
+                            if reg_tg == username:
+                                code = str(random.randint(100000, 999999))
+                                user_data['chatId'] = chat_id
+                                user_data['tgCode'] = code
+                                send_tg_message(chat_id, f"🔑 Ваш код верификации: {code}")
+                                found = True
+                                break
+                        if not found:
+                            send_tg_message(chat_id, "Привет! Пожалуйста, сначала начните регистрацию на сайте f.sale и укажите ваш никнейм в Telegram.")
         except Exception as e:
             print(f"Bot Error: {e}")
             time.sleep(5)
@@ -68,16 +77,22 @@ class DatabaseHandler(http.server.BaseHTTPRequestHandler):
             self.serve_db()
         elif parsed_path == '/api/messages':
             self.serve_messages()
-        elif parsed_path == '/api/auth/check-status':
+        elif parsed_path == '/api/auth/verify-code':
+            login = params.get('login', [''])[0]
             code = params.get('code', [''])[0]
-            if code in pending_verifications and pending_verifications[code].get('verified'):
-                user_data = pending_verifications.pop(code)
-                db = self.read_db()
-                db['users'].append(user_data)
-                self.save_db(db)
-                self.send_json_response({'success': True, 'user': user_data})
+            if login in pending_verifications:
+                user_data = pending_verifications[login]
+                if user_data.get('tgCode') == code:
+                    pending_verifications.pop(login)
+                    user_data.pop('tgCode', None)
+                    db = self.read_db()
+                    db['users'].append(user_data)
+                    self.save_db(db)
+                    self.send_json_response({'success': True, 'user': user_data})
+                else:
+                    self.send_json_response({'success': False, 'message': 'Неверный код'})
             else:
-                self.send_json_response({'success': False})
+                self.send_json_response({'success': False, 'message': 'Сессия не найдена'})
         else:
             # Serve static files
             path = parsed_path.lstrip('/')
@@ -111,12 +126,9 @@ class DatabaseHandler(http.server.BaseHTTPRequestHandler):
         elif parsed_path == '/api/users/promote':
             self.promote_user(data)
         elif parsed_path == '/api/auth/register-pending':
-            import random
-            code = str(random.randint(100000, 999999))
             data['id'] = str(int(datetime.now().timestamp() * 1000))
-            data['verified'] = False
-            pending_verifications[code] = data
-            self.send_json_response({'success': True, 'code': code})
+            pending_verifications[data['login']] = data
+            self.send_json_response({'success': True})
         else:
             self.send_error(404)
 
