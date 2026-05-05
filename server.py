@@ -156,79 +156,85 @@ class DatabaseHandler(http.server.BaseHTTPRequestHandler):
                 self.send_error(404)
 
     def do_POST(self):
-        parsed_path = urllib.parse.urlparse(self.path).path
-        content_length = int(self.headers['Content-Length'])
-        post_data = self.rfile.read(content_length)
-        data = json.loads(post_data)
+        try:
+            parsed_path = urllib.parse.urlparse(self.path).path
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data)
 
-        if parsed_path == '/api/database':
-            self.save_db(data)
-            self.send_json_response({'success': True})
-        elif parsed_path == '/api/messages':
-            self.add_message(data)
-        elif parsed_path == '/api/users/promote':
-            self.promote_user(data)
-        elif parsed_path == '/api/auth/register-pending':
-            import random
-            code = str(random.randint(100000, 999999))
-            data['id'] = str(int(datetime.now().timestamp() * 1000))
-            data['tgCode'] = code
-            data['verified'] = False
-            pending_verifications[data['login'].lower()] = data
-            self.send_json_response({'success': True, 'code': code})
-        elif parsed_path == '/api/auth/request-link':
-            # Used for existing users to bind TG
-            import random
-            login = data.get('login')
-            telegram = data.get('telegram')
-            code = str(random.randint(100000, 999999))
-            pending_verifications[login.lower()] = {'login': login, 'telegram': telegram, 'tgCode': code, 'verified': False}
-            self.send_json_response({'success': True, 'code': code})
-        elif parsed_path == '/api/users/demote':
-            db = self.read_db()
-            user = next((u for u in db['users'] if u['login'] == data.get('login')), None)
-            if user:
-                user['role'] = 'user'
+            if parsed_path == '/api/database':
+                self.save_db(data)
+                self.send_json_response({'success': True})
+            elif parsed_path == '/api/messages':
+                self.add_message(data)
+            elif parsed_path == '/api/users/promote':
+                self.promote_user(data)
+            elif parsed_path == '/api/auth/register-pending':
+                import random
+                code = str(random.randint(100000, 999999))
+                data['id'] = str(int(datetime.now().timestamp() * 1000))
+                data['tgCode'] = code
+                data['verified'] = False
+                pending_verifications[data['login'].lower()] = data
+                self.send_json_response({'success': True, 'code': code})
+            elif parsed_path == '/api/auth/request-link':
+                # Used for existing users to bind TG
+                import random
+                login = data.get('login')
+                telegram = data.get('telegram')
+                code = str(random.randint(100000, 999999))
+                pending_verifications[login.lower()] = {'login': login, 'telegram': telegram, 'tgCode': code, 'verified': False}
+                self.send_json_response({'success': True, 'code': code})
+            elif parsed_path == '/api/users/demote':
+                db = self.read_db()
+                user = next((u for u in db['users'] if u['login'] == data.get('login')), None)
+                if user:
+                    user['role'] = 'user'
+                    self.save_db(db)
+                    self.send_json_response({'success': True})
+                else:
+                    self.send_json_response({'success': False, 'message': 'User not found'})
+            elif parsed_path == '/api/users/ban':
+                db = self.read_db()
+                user = next((u for u in db['users'] if u['login'] == data.get('login')), None)
+                if user:
+                    user['banned'] = not user.get('banned', False)
+                    self.save_db(db)
+                    self.send_json_response({'success': True, 'banned': user['banned']})
+                else:
+                    self.send_json_response({'success': False, 'message': 'User not found'})
+            elif parsed_path == '/api/messages/delete':
+                db = self.read_db()
+                msg_id = data.get('id')
+                db['messages'] = [m for m in db['messages'] if m.get('id') != msg_id]
                 self.save_db(db)
                 self.send_json_response({'success': True})
-            else:
-                self.send_json_response({'success': False, 'message': 'User not found'})
-        elif parsed_path == '/api/users/ban':
-            db = self.read_db()
-            user = next((u for u in db['users'] if u['login'] == data.get('login')), None)
-            if user:
-                user['banned'] = not user.get('banned', False)
-                self.save_db(db)
-                self.send_json_response({'success': True, 'banned': user['banned']})
-            else:
-                self.send_json_response({'success': False, 'message': 'User not found'})
-        elif parsed_path == '/api/messages/delete':
-            db = self.read_db()
-            msg_id = data.get('id')
-            db['messages'] = [m for m in db['messages'] if m.get('id') != msg_id]
-            self.save_db(db)
-            self.send_json_response({'success': True})
-        elif parsed_path == '/api/auth/verify-recovery':
-            login = data.get('login').lower()
-            new_hash = data.get('passwordHash')
-            if login in pending_verifications:
-                vdata = pending_verifications[login]
-                if vdata.get('recovery') and vdata.get('verified'):
-                    pending_verifications.pop(login)
-                    db = self.read_db()
-                    user = next((u for u in db['users'] if u['login'].lower() == login), None)
-                    if user:
-                        user['passwordHash'] = new_hash
-                        self.save_db(db)
-                        self.send_json_response({'success': True})
+            elif parsed_path == '/api/auth/verify-recovery':
+                login = data.get('login').lower()
+                new_hash = data.get('passwordHash')
+                if login in pending_verifications:
+                    vdata = pending_verifications[login]
+                    if vdata.get('recovery') and vdata.get('verified'):
+                        pending_verifications.pop(login)
+                        db = self.read_db()
+                        user = next((u for u in db['users'] if u['login'].lower() == login), None)
+                        if user:
+                            user['passwordHash'] = new_hash
+                            self.save_db(db)
+                            self.send_json_response({'success': True})
+                        else:
+                            self.send_json_response({'success': False, 'message': 'Пользователь не найден'})
                     else:
-                        self.send_json_response({'success': False, 'message': 'Пользователь не найден'})
+                        self.send_json_response({'success': False, 'message': 'Сессия не подтверждена'})
                 else:
-                    self.send_json_response({'success': False, 'message': 'Сессия не подтверждена'})
+                    self.send_json_response({'success': False, 'message': 'Сессия не найдена'})
             else:
-                self.send_json_response({'success': False, 'message': 'Сессия не найдена'})
-        else:
-            self.send_error(404)
+                self.send_error(404)
+        except Exception as e:
+            print(f"POST Error: {e}")
+            import traceback
+            traceback.print_exc()
+            self.send_error(500, str(e))
 
     def serve_db(self):
         db = self.read_db()
@@ -247,7 +253,7 @@ class DatabaseHandler(http.server.BaseHTTPRequestHandler):
         self.send_json_response(messages)
 
     def add_message(self, msg_data):
-        db = read_db()
+        db = self.read_db()
         new_msg = {
             'id': str(int(datetime.now().timestamp() * 1000)),
             'lotId': msg_data.get('lotId', 'general'),
@@ -255,7 +261,7 @@ class DatabaseHandler(http.server.BaseHTTPRequestHandler):
             'createdAt': datetime.now().isoformat()
         }
         db.setdefault('messages', []).append(new_msg)
-        save_db(db)
+        self.save_db(db)
 
         # Notification logic
         if new_msg['lotId'].startswith('private_'):
@@ -290,6 +296,10 @@ class DatabaseHandler(http.server.BaseHTTPRequestHandler):
             return {'users': [], 'accounts': [], 'messages': []}
         with open(DB_FILE, 'r', encoding='utf-8') as f:
             return json.load(f)
+
+    def save_db(self, data):
+        with open(DB_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
 
     def send_json_response(self, data):
         self.send_response(200)
