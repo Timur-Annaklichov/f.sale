@@ -1003,7 +1003,7 @@ verificationForm.addEventListener("submit", async (e) => {
             if (result.success) {
                 setUserSession(result.user);
                 loginModal.close();
-                if (activePage === "profile") renderProfile();
+                if (localStorage.getItem(ACTIVE_SECTION_KEY) === "profile") renderProfile();
             } else {
                 alert(result.message || "Неверный код");
             }
