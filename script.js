@@ -401,6 +401,7 @@ async function fetchMessages() {
     try {
         const response = await fetch(`${MESSAGES_URL}?all=true`);
         allMessages = await response.json();
+        console.log("Fetched messages:", allMessages);
         renderChatList();
         renderMessages();
     } catch (e) {
@@ -409,8 +410,9 @@ async function fetchMessages() {
 }
 
 function renderChatList() {
-    if (!currentUser) return;
     const userChats = new Map();
+    
+    // Always add general chat
     userChats.set("general", {
         id: "general",
         name: "Общий чат",
@@ -418,21 +420,27 @@ function renderChatList() {
         lastMsg: allMessages.filter(m => m.lotId === "general").pop()?.text || "Сообщений нет"
     });
     
-    allMessages.forEach(m => {
-        if (m.lotId.startsWith("private_")) {
-            const [, id1, id2] = m.lotId.split("_");
-            if (id1 === currentUser.id || id2 === currentUser.id) {
-                const otherId = id1 === currentUser.id ? id2 : id1;
-                const otherUser = database.users.find(u => u.id === otherId);
-                const otherName = otherUser ? otherUser.name : "Пользователь";
-                if (!userChats.has(m.lotId)) {
-                    userChats.set(m.lotId, { id: m.lotId, name: otherName, type: "Личный чат", lastMsg: m.text });
-                } else {
-                    userChats.get(m.lotId).lastMsg = m.text;
+    // Private chats (only if logged in)
+    if (currentUser) {
+        allMessages.forEach(m => {
+            if (m.lotId.startsWith("private_")) {
+                const parts = m.lotId.split("_");
+                if (parts.length === 3) {
+                    const [, id1, id2] = parts;
+                    if (id1 === currentUser.id || id2 === currentUser.id) {
+                        const otherId = id1 === currentUser.id ? id2 : id1;
+                        const otherUser = database.users.find(u => u.id === otherId);
+                        const otherName = otherUser ? otherUser.name : "Пользователь";
+                        if (!userChats.has(m.lotId)) {
+                            userChats.set(m.lotId, { id: m.lotId, name: otherName, type: "Личный чат", lastMsg: m.text });
+                        } else {
+                            userChats.get(m.lotId).lastMsg = m.text;
+                        }
+                    }
                 }
             }
-        }
-    });
+        });
+    }
 
     chatList.innerHTML = Array.from(userChats.values()).map(c => `
         <div class="chat-item ${currentChatId === c.id ? 'active' : ''}" onclick="switchToChat('${c.id}', '${c.name}', '${c.type}')">
@@ -452,6 +460,7 @@ window.switchToChat = (id, name, type) => {
 
 function renderMessages() {
     const filtered = allMessages.filter(m => m.lotId === currentChatId);
+    console.log(`Rendering ${filtered.length} messages for chat ${currentChatId}`);
     const html = filtered.map(m => `
         <div class="chat-message ${currentUser && m.userId === currentUser.id ? 'own' : 'other'}">
             <span class="user">${m.userName}</span>
