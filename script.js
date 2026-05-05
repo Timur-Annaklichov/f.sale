@@ -77,6 +77,13 @@ let isRemoteDatabaseReady = false;
 let pendingSectionAfterLogin = null;
 let chatPollingInterval = null;
 let currentChatId = "general";
+const profileNavButton = document.querySelector("#profileNavButton");
+const profName = document.querySelector("#profName");
+const profLogin = document.querySelector("#profLogin");
+const profRole = document.querySelector("#profRole");
+const profTg = document.querySelector("#profTg");
+const profDate = document.querySelector("#profDate");
+
 let allMessages = [];
 
 async function init() {
@@ -111,6 +118,12 @@ function showSection(sectionName) {
     return;
   }
 
+  if (sectionName === "profile" && !currentUser) {
+    pendingSectionAfterLogin = "profile";
+    openLoginModal("login");
+    return;
+  }
+
   pageViews.forEach((section) => {
     section.classList.toggle("active", section.dataset.page === sectionName);
   });
@@ -123,8 +136,15 @@ function showSection(sectionName) {
   
   if (sectionName === "chat") {
       startChatPolling();
+      if (window.innerWidth <= 768) {
+          document.querySelector(".chat-layout").classList.add("show-list");
+      }
   } else {
       stopChatPolling();
+  }
+
+  if (sectionName === "profile") {
+      renderProfile();
   }
 
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -188,6 +208,7 @@ function syncAccountUi() {
     accountName.classList.remove("hidden");
     logoutUser.classList.remove("hidden");
     openLogin.classList.add("hidden");
+    profileNavButton.classList.remove("hidden");
     
     // Timur special tools
     if (currentUser.login.toLowerCase() === "timur") {
@@ -202,7 +223,24 @@ function syncAccountUi() {
   accountName.classList.add("hidden");
   logoutUser.classList.add("hidden");
   openLogin.classList.remove("hidden");
+  profileNavButton.classList.add("hidden");
   superAdminTools.classList.add("hidden");
+}
+
+function renderProfile() {
+    if (!currentUser) return;
+    profName.textContent = currentUser.name;
+    profLogin.textContent = currentUser.login;
+    profRole.textContent = currentUser.role === 'admin' ? 'Администратор' : 'Пользователь';
+    profRole.className = `value badge ${currentUser.role}`;
+    profTg.textContent = currentUser.telegram || 'Не указан';
+    profDate.textContent = new Date(currentUser.createdAt).toLocaleDateString('ru-RU', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
 }
 
 function restoreAdminSession() {
@@ -458,8 +496,13 @@ window.switchToChat = (id, name, type) => {
     currentChatId = id;
     chatTitle.textContent = name;
     chatType.textContent = type;
+    document.querySelector(".chat-layout").classList.remove("show-list");
     renderChatList();
     renderMessages();
+};
+
+window.goBackToChatList = () => {
+    document.querySelector(".chat-layout").classList.add("show-list");
 };
 
 function renderMessages() {

@@ -1114,3 +1114,85 @@ h3 {
   color: var(--muted);
   font-size: 13px;
 }
+
+/* Profile Section */
+.profile {
+  padding: 40px 20px;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.profile-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 32px;
+  box-shadow: var(--shadow-sm);
+}
+
+.profile-info {
+  display: grid;
+  gap: 20px;
+}
+
+.info-group {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.info-group:last-child {
+  border-bottom: none;
+}
+
+.info-group .label {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.info-group .value {
+  font-weight: 600;
+}
+
+.value.badge {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.value.badge.admin {
+  background: rgba(255, 107, 107, 0.1);
+  color: #ff6b6b;
+}
+
+.value.badge.user {
+  background: rgba(51, 154, 240, 0.1);
+  color: #339af0;
+}
+
+/* Mobile Chat Optimization */
+@media (max-width: 768px) {
+  .chat-layout {
+    grid-template-columns: 1fr;
+    height: calc(100vh - 120px);
+  }
+
+  .chat-sidebar {
+    display: none; /* We can toggle this later if needed */
+  }
+
+  /* Show sidebar only if no chat is selected (logic can be added in JS) */
+  .chat-layout.show-list .chat-sidebar {
+    display: flex;
+  }
+  .chat-layout.show-list .chat-main {
+    display: none;
+  }
+
+  .back-to-list {
+    display: flex !important;
+  }
+}

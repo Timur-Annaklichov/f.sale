@@ -46,7 +46,7 @@ def tg_bot_thread():
                                 code = str(random.randint(100000, 999999))
                                 user_data['chatId'] = chat_id
                                 user_data['tgCode'] = code
-                                send_tg_message(chat_id, f"🔑 Ваш код верификации: {code}")
+                                send_tg_message(chat_id, f"Ваш код: {code}")
                                 found = True
                                 break
                         if not found:

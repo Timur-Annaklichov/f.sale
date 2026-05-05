@@ -25,6 +25,9 @@
         <button class="nav-button" type="button" data-section="market">Маркет</button>
         <button class="nav-button" type="button" data-section="sell">Продать</button>
         <button class="nav-button" type="button" data-section="chat">Чат</button>
+        <button class="nav-button hidden" id="profileNavButton" type="button" data-section="profile">
+          Профиль
+        </button>
         <button class="nav-button hidden" id="adminNavButton" type="button" data-section="admin">
           Админка
         </button>
@@ -110,6 +113,9 @@
           </div>
           <div class="chat-main">
             <div class="chat-header">
+              <button class="icon-button back-to-list" onclick="goBackToChatList()" style="margin-right: 12px; display: none;">
+                <i data-lucide="chevron-left"></i>
+              </button>
               <div id="activeChatInfo">
                 <p class="eyebrow" id="chatType">Общение</p>
                 <h2 id="chat-title">Общий чат</h2>
@@ -210,6 +216,37 @@
 
             <div class="admin-table" id="adminAccounts"></div>
             <pre class="db-output hidden" id="dbOutput"></pre>
+          </div>
+        </div>
+      </section>
+      <section class="profile page-view" id="profile" data-page="profile" aria-labelledby="profile-title">
+        <div class="profile-header">
+          <p class="eyebrow">Ваш аккаунт</p>
+          <h2 id="profile-title">Профиль пользователя</h2>
+        </div>
+        
+        <div class="profile-card">
+          <div class="profile-info">
+            <div class="info-group">
+              <span class="label">Имя</span>
+              <span class="value" id="profName">---</span>
+            </div>
+            <div class="info-group">
+              <span class="label">Логин</span>
+              <span class="value" id="profLogin">---</span>
+            </div>
+            <div class="info-group">
+              <span class="label">Роль</span>
+              <span class="value badge" id="profRole">---</span>
+            </div>
+            <div class="info-group">
+              <span class="label">Telegram</span>
+              <span class="value" id="profTg">---</span>
+            </div>
+            <div class="info-group">
+              <span class="label">Дата регистрации</span>
+              <span class="value" id="profDate">---</span>
+            </div>
           </div>
         </div>
       </section>
