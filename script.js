@@ -104,6 +104,7 @@ async function init() {
     updateStats();
     syncAccountUi();
     renderAccounts();
+    refreshIcons();
     if (currentAdmin) setAdminSession(currentAdmin);
     
     const savedSection = localStorage.getItem(ACTIVE_SECTION_KEY);
@@ -112,6 +113,23 @@ async function init() {
     } else {
         showSection("home");
     }
+
+    // Auto-sync database every 10 seconds
+    setInterval(async () => {
+        try {
+            await syncRemoteDatabase();
+            renderAccounts();
+            updateStats();
+            if (currentUser) {
+                // If user was banned while online
+                const updatedUser = database.users.find(u => u.id === currentUser.id);
+                if (updatedUser && updatedUser.banned) {
+                    clearUserSession();
+                    location.reload();
+                }
+            }
+        } catch (e) {}
+    }, 10000);
 }
 
 function showSection(sectionName) {
@@ -162,6 +180,11 @@ function showSection(sectionName) {
 function refreshIcons() {
     if (window.lucide) {
         window.lucide.createIcons();
+    } else {
+        // Retry once after 100ms if lucide is still loading
+        setTimeout(() => {
+            if (window.lucide) window.lucide.createIcons();
+        }, 1000);
     }
 }
 
@@ -819,7 +842,15 @@ userLogin.addEventListener("submit", async (e) => {
     const user = database.users.find(u => normalizeLogin(u.login) === login && u.passwordHash === hash);
     if (user) {
         if (user.banned) {
-            loginError.textContent = "Ваш аккаунт заблокирован.";
+            loginError.innerHTML = `
+                <div style="text-align: left; line-height: 1.6; font-size: 13px;">
+                    <p>Здравствуйте.</p>
+                    <p>К сожалению, на данный момент мы видим, что ваш аккаунт был заблокирован администрацией платформы, в связи с чем продолжение общения или проведение каких-либо операций через него невозможно.</p>
+                    <p>Рекомендуем вам обратиться в службу поддержки сервиса для уточнения причин блокировки и возможных способов восстановления доступа. Обычно поддержка может предоставить более подробную информацию и помочь разобраться в ситуации.</p>
+                    <p>Со своей стороны благодарим вас за ранее проявленный интерес и взаимодействие. Надеемся, что вопрос с аккаунтом удастся решить в ближайшее время.</p>
+                    <p>Благодарим за понимание.</p>
+                </div>
+            `;
             loginError.classList.remove("hidden");
             return;
         }
@@ -912,10 +943,22 @@ logoutUser.addEventListener("click", () => {
 
 themeToggle.addEventListener("click", () => {
     document.body.classList.toggle("dark");
-    localStorage.setItem(THEME_KEY, document.body.classList.contains("dark") ? "dark" : "light");
+    const isDark = document.body.classList.contains("dark");
+    localStorage.setItem(THEME_KEY, isDark ? "dark" : "light");
+    
+    // Switch icon
+    const icon = themeToggle.querySelector("i");
+    if (icon) {
+        icon.setAttribute("data-lucide", isDark ? "sun" : "moon");
+        refreshIcons();
+    }
 });
 
-if (localStorage.getItem(THEME_KEY) === "dark") document.body.classList.add("dark");
+if (localStorage.getItem(THEME_KEY) === "dark") {
+    document.body.classList.add("dark");
+    const icon = themeToggle.querySelector("i");
+    if (icon) icon.setAttribute("data-lucide", "sun");
+}
 
 closeLogin.addEventListener("click", () => loginModal.close());
 openLogin.addEventListener("click", () => openLoginModal());
