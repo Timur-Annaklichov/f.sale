@@ -5,7 +5,9 @@ const USER_SESSION_KEY = "fsale_user_session_v1";
 const ACTIVE_SECTION_KEY = "fsale_active_section";
 const OWNED_ACCOUNTS_KEY = "fsale_owned_accounts_v1";
 
-const API_BASE = "http://localhost:3000/api";
+const API_BASE = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" 
+    ? "http://localhost:3000/api" 
+    : "/api";
 const REMOTE_DB_URL = `${API_BASE}/database`;
 const MESSAGES_URL = `${API_BASE}/messages`;
 const PROMOTE_URL = `${API_BASE}/users/promote`;
