@@ -360,13 +360,13 @@
 
       <div class="auth-form hidden" id="verificationStep">
         <p class="eyebrow">Verification</p>
-        <h3>Проверьте Telegram</h3>
-        <p style="margin-bottom: 20px; font-size: 14px; opacity: 0.8;">
-          Напишите боту <b>/start</b>. Он пришлет вам код подтверждения.
+        <h3 id="verificationTitle">Проверьте Telegram</h3>
+        <p id="verificationText" style="margin-bottom: 20px; font-size: 14px; opacity: 0.8;">
+          Нажмите в боте кнопку <b>🔗 Привязать аккаунт</b> или <b>🔑 Восстановление пароля</b>.
         </p>
         <a href="https://t.me/fsale_verificationbot" target="_blank" class="button secondary wide" style="margin-bottom: 20px;">
           <i data-lucide="external-link"></i>
-          Открыть бота @fsale_verificationbot
+          Открыть бота
         </a>
         
         <form id="verificationForm">
@@ -379,6 +379,7 @@
             <input type="password" id="recoveryNewPass" placeholder="Минимум 4 символа" minlength="4" />
           </label>
           <button class="button primary wide" type="submit">Подтвердить</button>
+          <button class="button ghost wide" type="button" onclick="setAuthMode('login')" style="margin-top: 10px;">Отмена</button>
         </form>
       </div>
     </dialog>

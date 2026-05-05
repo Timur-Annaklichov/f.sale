@@ -935,43 +935,74 @@ function showVerificationStep() {
     userRegister.classList.add("hidden");
     userLogin.classList.add("hidden");
     verificationStep.classList.remove("hidden");
-    document.querySelector("#recoveryPassLabel").classList.toggle("hidden", !isRecoveryMode);
+    
+    const vTitle = document.querySelector("#verificationTitle");
+    const vText = document.querySelector("#verificationText");
+    const codeLabel = verificationCodeInput.parentElement;
+    const passLabel = document.querySelector("#recoveryPassLabel");
+    
+    if (isRecoveryMode) {
+        vTitle.textContent = "Восстановление пароля";
+        vText.textContent = "Нажмите кнопку 'Восстановление пароля' в боте.";
+        codeLabel.classList.remove("hidden");
+        passLabel.classList.add("hidden");
+    } else {
+        vTitle.textContent = "Подтверждение Telegram";
+        vText.textContent = "Нажмите кнопку 'Привязать аккаунт' в боте.";
+        codeLabel.classList.remove("hidden");
+        passLabel.classList.add("hidden");
+    }
 }
 
 verificationForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     const code = verificationCodeInput.value.trim();
+    const passLabel = document.querySelector("#recoveryPassLabel");
+    const codeLabel = verificationCodeInput.parentElement;
+    
     if (!code || !currentPendingLogin) return;
     
     try {
         if (isRecoveryMode) {
-            const newPass = document.querySelector("#recoveryNewPass").value;
-            if (newPass.length < 4) return alert("Пароль слишком короткий");
-            const hash = await hashText(newPass);
-            const response = await fetch(`${API_BASE}/auth/verify-recovery`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ login: currentPendingLogin, code, passwordHash: hash })
-            });
-            const result = await response.json();
-            if (result.success) {
-                alert("Пароль успешно изменен!");
-                loginModal.close();
-                isRecoveryMode = false;
-                setAuthMode("login");
+            if (passLabel.classList.contains("hidden")) {
+                // Step 1: Verify code
+                const response = await fetch(`${API_BASE}/auth/verify-code?login=${currentPendingLogin}&code=${code}`);
+                const result = await response.json();
+                if (result.success) {
+                    // Show password input
+                    codeLabel.classList.add("hidden");
+                    passLabel.classList.remove("hidden");
+                    document.querySelector("#verificationText").textContent = "Теперь введите новый пароль.";
+                    // We don't clear code yet, we need it for the final submit
+                } else {
+                    alert(result.message || "Неверный код");
+                }
             } else {
-                alert(result.message || "Ошибка");
+                // Step 2: Set new password
+                const newPass = document.querySelector("#recoveryNewPass").value;
+                if (newPass.length < 4) return alert("Пароль слишком короткий");
+                const hash = await hashText(newPass);
+                const response = await fetch(`${API_BASE}/auth/verify-recovery`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ login: currentPendingLogin, code, passwordHash: hash })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    alert("Пароль успешно изменен!");
+                    setAuthMode("login");
+                } else {
+                    alert(result.message || "Ошибка");
+                }
             }
         } else {
+            // Standard registration/linking
             const response = await fetch(`${API_BASE}/auth/verify-code?login=${currentPendingLogin}&code=${code}`);
             const result = await response.json();
             
             if (result.success) {
                 setUserSession(result.user);
                 loginModal.close();
-                currentPendingLogin = null;
-                verificationCodeInput.value = "";
-                // Refresh profile if we were linking
                 if (activePage === "profile") renderProfile();
             } else {
                 alert(result.message || "Неверный код");

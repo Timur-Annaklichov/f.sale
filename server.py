@@ -17,14 +17,25 @@ if not os.path.exists(DB_FILE):
 
 pending_verifications = {} # code -> user_data
 
-def send_tg_message(chat_id, text):
+def send_tg_message(chat_id, text, reply_markup=None):
     try:
         url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
-        data = json.dumps({"chat_id": chat_id, "text": text}).encode('utf-8')
+        payload = {"chat_id": chat_id, "text": text}
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
+        data = json.dumps(payload).encode('utf-8')
         req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
         urllib.request.urlopen(req)
     except Exception as e:
         print(f"TG Error: {e}")
+
+def read_db():
+    with open(DB_FILE, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+def save_db(data):
+    with open(DB_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 def tg_bot_thread():
     offset = 0
@@ -42,18 +53,36 @@ def tg_bot_thread():
                     username = msg.get('from', {}).get('username', '').lower()
                     
                     if text == "/start":
-                        # Check if this telegram user has a pending registration
+                        markup = {
+                            "keyboard": [
+                                [{"text": "🔗 Привязать аккаунт"}, {"text": "🔑 Восстановление пароля"}]
+                            ],
+                            "resize_keyboard": True,
+                            "one_time_keyboard": False
+                        }
+                        send_tg_message(chat_id, "Выберите действие:", markup)
+                    
+                    elif text == "🔗 Привязать аккаунт":
                         found = False
-                        for code_key, user_data in pending_verifications.items():
-                            reg_tg = user_data.get('telegram', '').lstrip('@').lower()
-                            if reg_tg == username:
+                        for login, user_data in pending_verifications.items():
+                            if user_data.get('telegram', '').lstrip('@').lower() == username:
                                 code = str(random.randint(100000, 999999))
                                 user_data['chatId'] = chat_id
                                 user_data['tgCode'] = code
-                                send_tg_message(chat_id, f"Ваш код: {code}")
+                                send_tg_message(chat_id, f"Ваш код для привязки: {code}")
                                 found = True
                                 break
-                                break
+                    
+                    elif text == "🔑 Восстановление пароля":
+                        db = read_db()
+                        user = next((u for u in db['users'] if u.get('telegram', '').lstrip('@').lower() == username), None)
+                        if user:
+                            code = str(random.randint(100000, 999999))
+                            pending_verifications[user['login']] = {'login': user['login'], 'tgCode': code, 'recovery': True}
+                            send_tg_message(chat_id, f"Ваш код для восстановления: {code}")
+                        else:
+                            send_tg_message(chat_id, "Ваш аккаунт не найден. Пожалуйста, убедитесь, что вы привязали Telegram на сайте.")
+
         except Exception as e:
             print(f"Bot Error: {e}")
             time.sleep(5)
@@ -217,12 +246,8 @@ class DatabaseHandler(http.server.BaseHTTPRequestHandler):
             messages = [m for m in db.get('messages', []) if m.get('lotId', 'general') == lot_id]
         self.send_json_response(messages)
 
-    def save_db(self, data):
-        with open(DB_FILE, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-
     def add_message(self, msg_data):
-        db = self.read_db()
+        db = read_db()
         new_msg = {
             'id': str(int(datetime.now().timestamp() * 1000)),
             'lotId': msg_data.get('lotId', 'general'),
@@ -230,7 +255,7 @@ class DatabaseHandler(http.server.BaseHTTPRequestHandler):
             'createdAt': datetime.now().isoformat()
         }
         db.setdefault('messages', []).append(new_msg)
-        self.save_db(db)
+        save_db(db)
 
         # Notification logic
         if new_msg['lotId'].startswith('private_'):
