@@ -5,9 +5,15 @@ const USER_SESSION_KEY = "fsale_user_session_v1";
 const ACTIVE_SECTION_KEY = "fsale_active_section";
 const OWNED_ACCOUNTS_KEY = "fsale_owned_accounts_v1";
 
-const API_BASE = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" 
-    ? "http://localhost:3000/api" 
-    : "/api";
+const API_BASE = "https://f-sale-tide.onrender.com/api"; // UPDATE THIS TO YOUR RENDER URL
+const SUPABASE_URL = ""; // YOUR SUPABASE URL
+const SUPABASE_KEY = ""; // YOUR SUPABASE ANON KEY
+
+let supabase = null;
+if (SUPABASE_URL && SUPABASE_KEY) {
+    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+}
+
 const REMOTE_DB_URL = `${API_BASE}/database`;
 const MESSAGES_URL = `${API_BASE}/messages`;
 const PROMOTE_URL = `${API_BASE}/users/promote`;
@@ -170,12 +176,21 @@ function createId() {
 }
 
 async function loadRemoteDatabase() {
+  if (supabase) {
+      const { data: users } = await supabase.table("users").select("*");
+      const { data: accounts } = await supabase.table("accounts").select("*");
+      return { users: users || [], accounts: accounts || [], messages: [] };
+  }
   const response = await fetch(REMOTE_DB_URL, { cache: "no-store" });
   if (!response.ok) throw new Error("Server DB unavailable");
   return await response.json();
 }
 
 async function saveRemoteDatabase(data) {
+  if (supabase) {
+      await supabase.table("accounts").upsert(data.accounts);
+      return;
+  }
   const response = await fetch(REMOTE_DB_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -358,6 +373,11 @@ function ownsAccount(account) {
 }
 
 async function deleteAccount(accountId) {
+  if (supabase) {
+      await supabase.table("accounts").delete().eq("id", accountId);
+      await syncRemoteDatabase();
+      return;
+  }
   database.accounts = database.accounts.filter((a) => a.id !== accountId);
   await saveRemoteDatabase(database);
   renderAccounts();
@@ -513,8 +533,13 @@ function stopChatPolling() {
 
 async function fetchMessages() {
     try {
-        const response = await fetch(`${MESSAGES_URL}?all=true`);
-        allMessages = await response.json();
+        if (supabase) {
+            const { data } = await supabase.table("messages").select("*").order("createdAt", { ascending: true });
+            allMessages = data || [];
+        } else {
+            const response = await fetch(`${MESSAGES_URL}?all=true`);
+            allMessages = await response.json();
+        }
         console.log("Fetched messages:", allMessages);
         renderChatList();
         renderMessages();
@@ -639,14 +664,16 @@ function renderMessages() {
 window.deleteMessage = async (id) => {
     if (!confirm("Удалить это сообщение?")) return;
     try {
-        const response = await fetch(`${API_BASE}/messages/delete`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id })
-        });
-        if (response.ok) {
-            fetchMessages();
+        if (supabase) {
+            await supabase.table("messages").delete().eq("id", id);
+        } else {
+            await fetch(`${API_BASE}/messages/delete`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id })
+            });
         }
+        fetchMessages();
     } catch (e) {
         alert("Ошибка удаления");
     }
@@ -661,17 +688,31 @@ chatForm.addEventListener("submit", async (e) => {
     const text = chatInput.value.trim();
     if (!text) return;
     chatInput.value = "";
+    
+    const msgData = {
+        lotId: currentChatId,
+        userId: currentUser.id,
+        userName: currentUser.name,
+        text: text,
+        createdAt: new Date().toISOString()
+    };
+
     try {
-        await fetch(MESSAGES_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                lotId: currentChatId,
-                userId: currentUser.id,
-                userName: currentUser.name,
-                text: text
-            })
-        });
+        if (supabase) {
+            await supabase.table("messages").insert([msgData]);
+            // Still call Render to trigger TG notification
+            fetch(MESSAGES_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(msgData)
+            }).catch(e => console.log("TG Notification error", e));
+        } else {
+            await fetch(MESSAGES_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(msgData)
+            });
+        }
         fetchMessages();
     } catch (e) {
         alert("Ошибка отправки сообщения");
