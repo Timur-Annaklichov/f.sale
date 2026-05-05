@@ -5,8 +5,8 @@ const USER_SESSION_KEY = "fsale_user_session_v1";
 const ACTIVE_SECTION_KEY = "fsale_active_section";
 const OWNED_ACCOUNTS_KEY = "fsale_owned_accounts_v1";
 
-const SUPABASE_URL = ""; // YOUR SUPABASE URL
-const SUPABASE_KEY = ""; // YOUR SUPABASE ANON KEY
+const SUPABASE_URL = "https://iyzgjjrcaafaqgdhfzwv.supabase.co";
+const SUPABASE_KEY = "sb_publishable__l9BCvOUU26NKTeww8nA5g_XfqHdEIq";
 
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
