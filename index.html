@@ -10,7 +10,6 @@
     />
     <link rel="stylesheet" href="styles.css" />
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="script.js" defer></script>
   </head>
   <body>
@@ -291,14 +290,6 @@
       <div class="auth-tabs" role="tablist" aria-label="Аккаунт">
         <button class="filter active" type="button" data-auth-mode="login">Вход</button>
         <button class="filter" type="button" data-auth-mode="register">Регистрация</button>
-      </div>
-      <div class="google-auth">
-        <div id="googleButton"></div>
-        <button class="button secondary wide" id="googleFallback" type="button">
-          <i data-lucide="chrome"></i>
-          Google
-        </button>
-        <p class="login-error hidden" id="googleError">Google вход еще не подключен.</p>
       </div>
       <form class="admin-login auth-form" id="userLogin" autocomplete="off">
         <p class="eyebrow">Account</p>
