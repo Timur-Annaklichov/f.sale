@@ -1,0 +1,14 @@
+{
+  "users": [
+    {
+      "id": "owner-timur",
+      "login": "Timur",
+      "passwordHash": "386d5796526ca17bd7dfea3799105e50cbdd300eae4f4b9a798127dc9903bac5",
+      "name": "Timur",
+      "role": "admin",
+      "createdAt": "2026-05-05T15:00:00.000Z"
+    }
+  ],
+  "accounts": [],
+  "messages": []
+}
