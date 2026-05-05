@@ -423,7 +423,7 @@ function renderChatList() {
     // Private chats (only if logged in)
     if (currentUser) {
         allMessages.forEach(m => {
-            if (m.lotId.startsWith("private_")) {
+            if (m.lotId && m.lotId.startsWith("private_")) {
                 const parts = m.lotId.split("_");
                 if (parts.length === 3) {
                     const [, id1, id2] = parts;
