@@ -869,6 +869,25 @@ const verificationStep = document.querySelector("#verificationStep");
 const verificationForm = document.querySelector("#verificationForm");
 const verificationCodeInput = document.querySelector("#verificationCodeInput");
 let currentPendingLogin = null;
+let isRecoveryMode = false;
+
+async function startPasswordRecovery() {
+    const login = normalizeLogin(userLogin.elements.user_login.value);
+    if (!login) return alert("Введите логин");
+    try {
+        const response = await fetch(`${API_BASE}/auth/recover-init?login=${login}`);
+        const result = await response.json();
+        if (result.success) {
+            currentPendingLogin = login;
+            isRecoveryMode = true;
+            showVerificationStep();
+        } else {
+            alert(result.message);
+        }
+    } catch (e) {
+        alert("Ошибка сервера");
+    }
+}
 
 userRegister.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -909,7 +928,9 @@ userRegister.addEventListener("submit", async (e) => {
 
 function showVerificationStep() {
     userRegister.classList.add("hidden");
+    userLogin.classList.add("hidden");
     verificationStep.classList.remove("hidden");
+    document.querySelector("#recoveryPassLabel").classList.toggle("hidden", !isRecoveryMode);
 }
 
 verificationForm.addEventListener("submit", async (e) => {
@@ -918,17 +939,38 @@ verificationForm.addEventListener("submit", async (e) => {
     if (!code || !currentPendingLogin) return;
     
     try {
-        const response = await fetch(`${API_BASE}/auth/verify-code?login=${currentPendingLogin}&code=${code}`);
-        const result = await response.json();
-        
-        if (result.success) {
-            setUserSession(result.user);
-            loginModal.close();
-            showSection(pendingSectionAfterLogin || "market");
-            currentPendingLogin = null;
-            verificationCodeInput.value = "";
+        if (isRecoveryMode) {
+            const newPass = document.querySelector("#recoveryNewPass").value;
+            if (newPass.length < 4) return alert("Пароль слишком короткий");
+            const hash = await hashText(newPass);
+            const response = await fetch(`${API_BASE}/auth/verify-recovery`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ login: currentPendingLogin, code, passwordHash: hash })
+            });
+            const result = await response.json();
+            if (result.success) {
+                alert("Пароль успешно изменен!");
+                loginModal.close();
+                isRecoveryMode = false;
+                setAuthMode("login");
+            } else {
+                alert(result.message || "Ошибка");
+            }
         } else {
-            alert(result.message || "Неверный код");
+            const response = await fetch(`${API_BASE}/auth/verify-code?login=${currentPendingLogin}&code=${code}`);
+            const result = await response.json();
+            
+            if (result.success) {
+                setUserSession(result.user);
+                loginModal.close();
+                currentPendingLogin = null;
+                verificationCodeInput.value = "";
+                // Refresh profile if we were linking
+                if (activePage === "profile") renderProfile();
+            } else {
+                alert(result.message || "Неверный код");
+            }
         }
     } catch (e) {
         alert("Ошибка подтверждения");
@@ -978,7 +1020,9 @@ function setAuthMode(mode) {
     userLogin.classList.toggle("hidden", mode !== "login");
     userRegister.classList.toggle("hidden", mode !== "register");
     verificationStep.classList.add("hidden");
+    document.querySelector("#recoveryPassLabel").classList.add("hidden");
     currentPendingLogin = null;
+    isRecoveryMode = false;
     verificationCodeInput.value = "";
 }
 

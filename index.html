@@ -330,6 +330,9 @@
           <i data-lucide="log-in"></i>
           Войти
         </button>
+        <div style="text-align: center; margin-top: 12px;">
+          <a href="#" onclick="startPasswordRecovery(); return false;" style="font-size: 11px; opacity: 0.7;">Забыли пароль?</a>
+        </div>
       </form>
       <form class="admin-login auth-form hidden" id="userRegister" autocomplete="off">
         <p class="eyebrow">Account</p>
@@ -379,6 +382,10 @@
           <label>
             Код из Telegram
             <input type="text" id="verificationCodeInput" placeholder="123456" maxlength="6" style="text-align: center; letter-spacing: 4px; font-weight: bold;" required />
+          </label>
+          <label id="recoveryPassLabel" class="hidden" style="margin-top: 12px; display: block;">
+            Новый пароль
+            <input type="password" id="recoveryNewPass" placeholder="Минимум 4 символа" minlength="4" />
           </label>
           <button class="button primary wide" type="submit">Подтвердить</button>
         </form>

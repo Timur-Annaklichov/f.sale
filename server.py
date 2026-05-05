@@ -53,8 +53,7 @@ def tg_bot_thread():
                                 send_tg_message(chat_id, f"Ваш код: {code}")
                                 found = True
                                 break
-                        if not found:
-                            send_tg_message(chat_id, "Привет! Пожалуйста, сначала начните регистрацию на сайте f.sale и укажите ваш никнейм в Telegram.")
+                                break
         except Exception as e:
             print(f"Bot Error: {e}")
             time.sleep(5)
@@ -81,6 +80,15 @@ class DatabaseHandler(http.server.BaseHTTPRequestHandler):
             self.serve_db()
         elif parsed_path == '/api/messages':
             self.serve_messages()
+        elif parsed_path == '/api/auth/recover-init':
+            login = params.get('login', [''])[0]
+            db = self.read_db()
+            user = next((u for u in db['users'] if u['login'] == login), None)
+            if user and user.get('chatId'):
+                pending_verifications[login] = {'login': login, 'recovery': True}
+                self.send_json_response({'success': True})
+            else:
+                self.send_json_response({'success': False, 'message': 'Аккаунт не привязан к Telegram или не существует'})
         elif parsed_path == '/api/auth/verify-code':
             login = params.get('login', [''])[0]
             code = params.get('code', [''])[0]
@@ -170,6 +178,26 @@ class DatabaseHandler(http.server.BaseHTTPRequestHandler):
             db['messages'] = [m for m in db['messages'] if m.get('id') != msg_id]
             self.save_db(db)
             self.send_json_response({'success': True})
+        elif parsed_path == '/api/auth/verify-recovery':
+            login = data.get('login')
+            code = data.get('code')
+            new_hash = data.get('passwordHash')
+            if login in pending_verifications:
+                vdata = pending_verifications[login]
+                if vdata.get('recovery') and vdata.get('tgCode') == code:
+                    pending_verifications.pop(login)
+                    db = self.read_db()
+                    user = next((u for u in db['users'] if u['login'] == login), None)
+                    if user:
+                        user['passwordHash'] = new_hash
+                        self.save_db(db)
+                        self.send_json_response({'success': True})
+                    else:
+                        self.send_json_response({'success': False, 'message': 'Пользователь не найден'})
+                else:
+                    self.send_json_response({'success': False, 'message': 'Неверный код'})
+            else:
+                self.send_json_response({'success': False, 'message': 'Сессия не найдена'})
         else:
             self.send_error(404)
 
